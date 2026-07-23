@@ -9,13 +9,14 @@ namespace DBDECoordinateLoadBridge
     [BepInDependency(DbdeBridge.CoordinateLoadOptionGuid, BepInDependency.DependencyFlags.SoftDependency)]
     public sealed class DBDECoordinateLoadBridgePlugin : BaseUnityPlugin
     {
+        public const string PluginGuid = "tomtom.dbdecoordinateloadbridge";
+
 #if KK
-        public const string PluginGuid = "tomtom.kk.dbdecoordinateloadbridge";
         public const string Name = "KK_DBDECoordinateLoadBridge";
 #else
-        public const string PluginGuid = "tomtom.kks.dbdecoordinateloadbridge";
         public const string Name = "KKS_DBDECoordinateLoadBridge";
 #endif
+
         [System.Obsolete("Use PluginGuid.")]
         public const string GUID = PluginGuid;
 

@@ -10,34 +10,32 @@ namespace FaceWeightBinder
 {
     [BepInPlugin(PluginGuid, Name, Version)]
     [BepInDependency(KoikatuAPI.GUID)]
-#if KK
-    [BepInDependency("tomtom.kk.accessorybonebinder",
+    [BepInDependency(AccessoryBoneBinderBridge.PluginGuid,
         BepInDependency.DependencyFlags.SoftDependency)]
-    [BepInDependency("tomtom.kk.makerblendshapesync",
+    [BepInDependency(AccessoryBoneBinderBridge.LegacyPluginGuid,
         BepInDependency.DependencyFlags.SoftDependency)]
-#else
-    [BepInDependency("tomtom.kks.accessorybonebinder",
+    [BepInDependency(BlendShapeSyncBridge.PluginGuid,
         BepInDependency.DependencyFlags.SoftDependency)]
-    [BepInDependency("tomtom.kks.makerblendshapesync",
+    [BepInDependency(BlendShapeSyncBridge.LegacyPluginGuid,
         BepInDependency.DependencyFlags.SoftDependency)]
-#endif
     [BepInDependency("com.rclcircuit.bepinex.modboneimplantor",
         BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(CoordinateLoadOptionGuid,
         BepInDependency.DependencyFlags.SoftDependency)]
     public sealed class FaceWeightBinderPlugin : BaseUnityPlugin
     {
+        public const string PluginGuid = "tomtom.faceweightbinder";
+
 #if KK
-        public const string PluginGuid = "tomtom.kk.faceweightbinder";
         public const string Name = "KK_FaceWeightBinder";
         internal const string CoordinateLoadOptionGuid =
             "com.jim60105.kk.coordinateloadoption";
 #else
-        public const string PluginGuid = "tomtom.kks.faceweightbinder";
         public const string Name = "KKS_FaceWeightBinder";
         internal const string CoordinateLoadOptionGuid =
             "com.jim60105.kks.coordinateloadoption";
 #endif
+
         [System.Obsolete("Use PluginGuid.")]
         public const string GUID = PluginGuid;
 

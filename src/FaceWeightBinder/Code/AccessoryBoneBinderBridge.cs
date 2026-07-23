@@ -6,11 +6,14 @@ namespace FaceWeightBinder
 {
     internal static class AccessoryBoneBinderBridge
     {
+        internal const string PluginGuid = "tomtom.accessorybonebinder";
+
 #if KK
-        private const string PluginGuid = "tomtom.kk.accessorybonebinder";
+        internal const string LegacyPluginGuid = "tomtom.kk.accessorybonebinder";
 #else
-        private const string PluginGuid = "tomtom.kks.accessorybonebinder";
+        internal const string LegacyPluginGuid = "tomtom.kks.accessorybonebinder";
 #endif
+
         private const string ApiTypeName = "AccessoryBoneBinder.AccessoryBoneBinderApi";
         private static MethodInfo _rebindMethod;
         private static bool _resolved;
@@ -41,6 +44,9 @@ namespace FaceWeightBinder
             _resolved = true;
             _rebindMethod = PluginProbe.FindStaticMethod(
                 PluginGuid, ApiTypeName, "RebindNow", new[] { typeof(ChaControl) });
+            if (_rebindMethod == null)
+                _rebindMethod = PluginProbe.FindStaticMethod(
+                    LegacyPluginGuid, ApiTypeName, "RebindNow", new[] { typeof(ChaControl) });
         }
     }
 }

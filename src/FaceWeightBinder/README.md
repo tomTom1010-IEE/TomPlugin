@@ -45,8 +45,10 @@ Unity 导入时修正，运行时插件不会自动补偿 `100x`。
 
 ## Compatibility
 
-- KK uses the `tomtom.kk.*` plugin GUIDs and KK Coordinate Load Option bridge.
-- KKS keeps the existing `tomtom.kks.*` GUIDs and behavior.
+- KK and KKS use the same platform-neutral TomPlugin GUIDs.
+- Coordinate Load Option integration remains platform-specific.
+- The optional bridges prefer the unified MakerBlendShapeSync and
+  AccessoryBoneBinder GUIDs and can still detect their legacy platform GUIDs.
 - MakerBlendShapeSync and AccessoryBoneBinder expose small optional APIs so the
   binder can request rebind/reapply operations without hard runtime references.
 - Custom topology without matching BlendShapes follows facial bones but does

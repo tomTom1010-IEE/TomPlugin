@@ -14,10 +14,12 @@ MakerBlendShapeSync 为 KK/KKS 的 Maker 增加 BlendShape 编辑界面，将结
 | Koikatu | `MakerBlendShapeSync.KK.csproj` | `KK_MakerBlendShapeSync.dll` |
 | Koikatsu Sunshine | `MakerBlendShapeSync.KKS.csproj` | `KKS_MakerBlendShapeSync.dll` |
 
-The two builds preserve their existing GUIDs and versions. The extended-data
-key remains `MakerBlendShapeSync`, so existing cards remain compatible.
+Both builds use the shared plugin GUID `tomtom.makerblendshapesync`. The
+extended-data key remains `MakerBlendShapeSync`, so existing cards and
+coordinates remain compatible.
 
-两个版本保留原有 GUID、版本号和 `MakerBlendShapeSync` 存档 key，不改变旧卡兼容性。
+两个版本共用插件 GUID `tomtom.makerblendshapesync`。存档 key 仍为
+`MakerBlendShapeSync`，因此旧人物卡和服装卡保持兼容。
 
 ## Build
 

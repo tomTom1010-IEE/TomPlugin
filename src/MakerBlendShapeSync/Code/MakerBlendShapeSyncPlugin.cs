@@ -16,20 +16,13 @@ namespace MakerBlendShapeSync
     [BepInDependency("com.joan6694.kkplugins.kkpe", BepInDependency.DependencyFlags.SoftDependency)]
     public sealed class MakerBlendShapeSyncPlugin : BaseUnityPlugin
     {
-#if KK
-        public const string PluginGuid = "tomtom.kk.makerblendshapesync";
-#else
-        public const string PluginGuid = "tomtom.kks.makerblendshapesync";
-#endif
+        public const string PluginGuid = "tomtom.makerblendshapesync";
+
         [System.Obsolete("Use PluginGuid.")]
         public const string GUID = PluginGuid;
 
         public const string Name = "MakerBlendShapeSync";
-#if KK
         public const string Version = "0.5.1.0";
-#else
-        public const string Version = "0.5.1.0";
-#endif
 
         internal const string DataId = "MakerBlendShapeSync";
         internal static ManualLogSource Log;

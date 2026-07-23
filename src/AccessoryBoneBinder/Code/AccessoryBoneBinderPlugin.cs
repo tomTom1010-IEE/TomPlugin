@@ -14,17 +14,18 @@ namespace AccessoryBoneBinder
     [BepInDependency(CoordinateLoadOptionBridge.PluginGuid, BepInDependency.DependencyFlags.SoftDependency)]
     public sealed class AccessoryBoneBinderPlugin : BaseUnityPlugin
     {
+        public const string PluginGuid = "tomtom.accessorybonebinder";
+
 #if KK
-        public const string PluginGuid = "tomtom.kk.accessorybonebinder";
         public const string Name = "KK_AccessoryBoneBinder";
-        public const string Version = "0.2.2.0";
 #else
-        public const string PluginGuid = "tomtom.kks.accessorybonebinder";
         public const string Name = "KKS_AccessoryBoneBinder";
-        public const string Version = "0.2.2.0";
 #endif
+
         [System.Obsolete("Use PluginGuid.")]
         public const string GUID = PluginGuid;
+
+        public const string Version = "0.2.2.0";
 
         internal static ManualLogSource Log;
 
