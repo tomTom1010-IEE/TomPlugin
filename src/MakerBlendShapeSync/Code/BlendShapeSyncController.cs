@@ -1,0 +1,759 @@
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using ExtensibleSaveFormat;
+using KKAPI;
+using KKAPI.Chara;
+using KKAPI.Maker;
+using MessagePack;
+using UnityEngine;
+
+namespace MakerBlendShapeSync
+{
+    public sealed class BlendShapeSyncController : CharaCustomFunctionController
+    {
+        private const string DataKey = "BlendShapeSyncData";
+        private const int DataVersion = 5;
+        private const float TopologyPollInterval = 0.2f;
+        private const float StableApplyDuration = 0.8f;
+        private const float ApplyRetryInterval = 0.2f;
+        private const float ApplyTimeout = 3f;
+
+        internal readonly List<BlendShapeRecord> Records = new List<BlendShapeRecord>();
+        internal readonly List<RendererScopeOverride> PerCoordinateRenderers =
+            new List<RendererScopeOverride>();
+
+        private readonly Dictionary<string, float> _baselines = new Dictionary<string, float>();
+        private Coroutine _scheduledApply;
+        private float _nextTopologyPoll;
+        private int _topologyFingerprint = int.MinValue;
+        private int _observedCoordinate = -1;
+        private int _rendererGeneration;
+
+        public int CurrentCoordinateIndex => ChaControl.fileStatus.coordinateType;
+        internal int RendererGeneration => _rendererGeneration;
+
+        private ChaFile LoadedChaFile =>
+            MakerAPI.InsideMaker && MakerAPI.LastLoadedChaFile != null
+                ? MakerAPI.LastLoadedChaFile
+                : ChaControl.chaFile;
+
+        protected override void OnReload(GameMode currentGameMode, bool maintainState)
+        {
+            if (!maintainState)
+            {
+                if (MakerAPI.InsideMaker)
+                    RestoreAllBaselines();
+
+                _baselines.Clear();
+                LoadFromExtendedData();
+                _observedCoordinate = CurrentCoordinateIndex;
+                _topologyFingerprint = int.MinValue;
+                _rendererGeneration++;
+            }
+
+            ScheduleApply();
+            base.OnReload(currentGameMode, maintainState);
+        }
+
+        protected override void OnCardBeingSaved(GameMode currentGameMode)
+        {
+            SaveToExtendedData();
+        }
+
+        protected override void OnCoordinateBeingSaved(ChaFileCoordinate coordinate)
+        {
+            SaveCoordinateRecordsTo(coordinate, CurrentCoordinateIndex);
+            base.OnCoordinateBeingSaved(coordinate);
+        }
+
+        protected override void OnCoordinateBeingLoaded(ChaFileCoordinate coordinate)
+        {
+            if (MakerAPI.InsideMaker && _observedCoordinate >= 0)
+                RestoreCoordinateBaselines(_observedCoordinate);
+
+            var loadFlags = MakerAPI.GetCoordinateLoadFlags();
+            bool loadClothing = loadFlags == null || loadFlags.Clothes;
+            bool loadAccessories = loadFlags == null || loadFlags.Accessories;
+            LoadCoordinateRecordsFrom(coordinate, CurrentCoordinateIndex,
+                loadClothing, loadAccessories);
+            ScheduleApply();
+            base.OnCoordinateBeingLoaded(coordinate);
+        }
+
+        protected override void OnDestroy()
+        {
+            if (_scheduledApply != null)
+                StopCoroutine(_scheduledApply);
+            base.OnDestroy();
+        }
+
+        protected override void Update()
+        {
+            base.Update();
+            if (!MakerAPI.InsideMaker || ChaControl == null || Time.unscaledTime < _nextTopologyPoll)
+                return;
+
+            _nextTopologyPoll = Time.unscaledTime + TopologyPollInterval;
+
+            int coordinate = CurrentCoordinateIndex;
+            if (_observedCoordinate < 0)
+            {
+                _observedCoordinate = coordinate;
+            }
+            else if (_observedCoordinate != coordinate)
+            {
+                RestoreCoordinateBaselines(_observedCoordinate);
+                _observedCoordinate = coordinate;
+                ScheduleApply();
+            }
+
+            int fingerprint = BuildTopologyFingerprint();
+            if (fingerprint == _topologyFingerprint)
+                return;
+
+            _topologyFingerprint = fingerprint;
+            _rendererGeneration++;
+            ScheduleApply();
+        }
+
+        internal void ScheduleApply()
+        {
+            if (_scheduledApply != null)
+                StopCoroutine(_scheduledApply);
+
+            _scheduledApply = StartCoroutine(MakerAPI.InsideMaker
+                ? ApplyWhenMakerStable()
+                : DelayedApply());
+        }
+
+        private IEnumerator DelayedApply()
+        {
+            yield return null;
+            yield return null;
+            ApplyCurrentCoordinate();
+            StudioPoseEditorBridge.ScheduleForCharacter(ChaControl);
+            _scheduledApply = null;
+        }
+
+        private IEnumerator ApplyWhenMakerStable()
+        {
+            float startedAt = Time.realtimeSinceStartup;
+            float stableSince = -1f;
+            float nextApplyAt = 0f;
+            int previousFingerprint = BuildTopologyFingerprint();
+            int stableFrames = 0;
+
+            while (Time.realtimeSinceStartup - startedAt < ApplyTimeout)
+            {
+                yield return new WaitForEndOfFrame();
+
+                int fingerprint = BuildTopologyFingerprint();
+                if (fingerprint != previousFingerprint)
+                {
+                    previousFingerprint = fingerprint;
+                    stableFrames = 0;
+                    stableSince = -1f;
+                    _topologyFingerprint = fingerprint;
+                    _rendererGeneration++;
+                    continue;
+                }
+
+                stableFrames++;
+                if (stableFrames < 2)
+                    continue;
+
+                float now = Time.realtimeSinceStartup;
+                if (stableSince < 0f)
+                {
+                    stableSince = now;
+                    nextApplyAt = now;
+                }
+
+                if (now >= nextApplyAt)
+                {
+                    ApplyCurrentCoordinate();
+                    nextApplyAt = now + ApplyRetryInterval;
+                }
+
+                if (now - stableSince >= StableApplyDuration)
+                {
+                    ApplyCurrentCoordinate();
+                    break;
+                }
+            }
+
+            _observedCoordinate = CurrentCoordinateIndex;
+            _scheduledApply = null;
+        }
+
+        internal void UpsertRecord(BlendShapeRecord record)
+        {
+            if (record == null)
+                return;
+
+            if (record.TargetScope == BlendShapeTargetScope.Character)
+                record.Coordinate = -1;
+            else if (record.TargetScope == BlendShapeTargetScope.Clothing ||
+                     record.TargetScope == BlendShapeTargetScope.Accessory ||
+                     record.TargetScope == BlendShapeTargetScope.CharacterCoordinate)
+                record.Coordinate = CurrentCoordinateIndex;
+
+            RemoveMatchingRecord(record);
+            Records.Add(record);
+        }
+
+        internal void RemoveRecord(SkinnedMeshRenderer renderer, string rendererPath, string shapeName)
+        {
+            if (renderer == null || renderer.sharedMesh == null)
+                return;
+
+            BlendShapeTargetScope scope = GetEffectiveTargetScope(renderer);
+            int coordinate = scope == BlendShapeTargetScope.Character ? -1 : CurrentCoordinateIndex;
+            RestoreBaseline(renderer, shapeName, coordinate);
+
+            string meshName = renderer.sharedMesh.name;
+            Records.RemoveAll(x => x.TargetScope == scope &&
+                                   x.Coordinate == coordinate &&
+                                   x.RendererPath == rendererPath &&
+                                   x.MeshName == meshName &&
+                                   x.ShapeName == shapeName);
+        }
+
+        internal BlendShapeTargetScope GetEffectiveTargetScope(SkinnedMeshRenderer renderer)
+        {
+            if (renderer == null)
+                return BlendShapeTargetScope.Unknown;
+
+            if (BlendShapeUtilities.IsBodyRenderer(renderer))
+                return IsRendererPerCoordinate(renderer)
+                    ? BlendShapeTargetScope.CharacterCoordinate
+                    : BlendShapeTargetScope.Character;
+
+            return BlendShapeUtilities.GetTargetScope(ChaControl, renderer);
+        }
+
+        internal bool IsRendererPerCoordinate(SkinnedMeshRenderer renderer)
+        {
+            if (renderer == null || renderer.sharedMesh == null || ChaControl == null)
+                return false;
+
+            string path = BlendShapeUtilities.GetRelativePath(ChaControl.transform, renderer.transform);
+            string meshName = renderer.sharedMesh.name;
+            return PerCoordinateRenderers.Any(x =>
+                x.RendererPath == path && x.MeshName == meshName);
+        }
+
+        internal void SetRendererPerCoordinate(SkinnedMeshRenderer renderer, bool enabled)
+        {
+            if (renderer == null || renderer.sharedMesh == null || ChaControl == null ||
+                !BlendShapeUtilities.IsBodyRenderer(renderer) ||
+                IsRendererPerCoordinate(renderer) == enabled)
+                return;
+
+            string path = BlendShapeUtilities.GetRelativePath(ChaControl.transform, renderer.transform);
+            string meshName = renderer.sharedMesh.name;
+            int currentCoordinate = CurrentCoordinateIndex;
+            int coordinateCount = GetCoordinateCount();
+            var matching = Records.Where(x =>
+                    x.RendererPath == path && x.MeshName == meshName)
+                .ToList();
+
+            Records.RemoveAll(x => x.RendererPath == path && x.MeshName == meshName);
+            PerCoordinateRenderers.RemoveAll(x =>
+                x.RendererPath == path && x.MeshName == meshName);
+
+            if (enabled)
+            {
+                PerCoordinateRenderers.Add(new RendererScopeOverride
+                {
+                    RendererPath = path,
+                    MeshName = meshName
+                });
+
+                foreach (var shapeGroup in matching.GroupBy(x => x.ShapeName))
+                {
+                    var global = shapeGroup.LastOrDefault(x =>
+                        x.TargetScope == BlendShapeTargetScope.Character || x.Coordinate < 0);
+                    for (int coordinate = 0; coordinate < coordinateCount; coordinate++)
+                    {
+                        var source = shapeGroup.LastOrDefault(x => x.Coordinate == coordinate) ?? global;
+                        if (source == null)
+                            continue;
+                        AddNormalizedRecord(Records,
+                            CloneBodyRecord(source, BlendShapeTargetScope.CharacterCoordinate, coordinate));
+                    }
+                }
+            }
+            else
+            {
+                foreach (var shapeGroup in matching.GroupBy(x => x.ShapeName))
+                {
+                    var source = shapeGroup.LastOrDefault(x => x.Coordinate == currentCoordinate) ??
+                                 shapeGroup.LastOrDefault(x =>
+                                     x.TargetScope == BlendShapeTargetScope.Character) ??
+                                 shapeGroup.LastOrDefault();
+                    if (source != null)
+                        AddNormalizedRecord(Records,
+                            CloneBodyRecord(source, BlendShapeTargetScope.Character, -1));
+                }
+            }
+
+            NormalizeRecords();
+            _rendererGeneration++;
+            ScheduleApply();
+        }
+
+        internal void AccessoryKindChangedEvent(int slot)
+        {
+            int coordinate = CurrentCoordinateIndex;
+            NormalizeRecords();
+            Records.RemoveAll(x => x.TargetScope == BlendShapeTargetScope.Accessory &&
+                                   x.Coordinate == coordinate && x.Slot == slot);
+            ScheduleApply();
+        }
+
+        internal void AccessoryTransferredEvent(int sourceSlot, int destinationSlot)
+        {
+            int coordinate = CurrentCoordinateIndex;
+            NormalizeRecords();
+            var copies = Records.Where(x => x.TargetScope == BlendShapeTargetScope.Accessory &&
+                                             x.Coordinate == coordinate && x.Slot == sourceSlot)
+                .Select(x => CloneForSlot(x, coordinate, destinationSlot)).ToList();
+
+            Records.RemoveAll(x => x.TargetScope == BlendShapeTargetScope.Accessory &&
+                                   x.Coordinate == coordinate && x.Slot == destinationSlot);
+            foreach (var copy in copies)
+            {
+                BlendShapeUtilities.RemapRecordToSlot(ChaControl, copy, destinationSlot);
+                AddNormalizedRecord(Records, copy);
+            }
+
+            ScheduleApply();
+        }
+
+        internal void AccessoriesCopiedEvent(int sourceCoordinate, int destinationCoordinate,
+            IEnumerable<int> copiedSlots)
+        {
+            NormalizeRecords();
+            foreach (int slot in copiedSlots.Distinct())
+            {
+                var copies = Records.Where(x => x.TargetScope == BlendShapeTargetScope.Accessory &&
+                                                 x.Coordinate == sourceCoordinate && x.Slot == slot)
+                    .Select(x => CloneForSlot(x, destinationCoordinate, slot)).ToList();
+                Records.RemoveAll(x => x.TargetScope == BlendShapeTargetScope.Accessory &&
+                                       x.Coordinate == destinationCoordinate && x.Slot == slot);
+                foreach (var copy in copies)
+                    AddNormalizedRecord(Records, copy);
+            }
+
+            ScheduleApply();
+        }
+
+        internal void ClothingCopiedEvent(int sourceCoordinate, int destinationCoordinate,
+            IEnumerable<int> copiedSlots)
+        {
+            NormalizeRecords();
+            foreach (int slot in copiedSlots.Distinct())
+            {
+                var copies = Records.Where(x => x.TargetScope == BlendShapeTargetScope.Clothing &&
+                                                 x.Coordinate == sourceCoordinate && x.Slot == slot)
+                    .Select(x => CloneForSlot(x, destinationCoordinate, slot)).ToList();
+                Records.RemoveAll(x => x.TargetScope == BlendShapeTargetScope.Clothing &&
+                                       x.Coordinate == destinationCoordinate && x.Slot == slot);
+                foreach (var copy in copies)
+                    AddNormalizedRecord(Records, copy);
+            }
+
+            ScheduleApply();
+        }
+
+        internal BlendShapeRecord GetRecord(BlendShapeTargetScope scope, int coordinate,
+            string rendererPath, string meshName, string shapeName)
+        {
+            return Records.LastOrDefault(x => x.TargetScope == scope &&
+                                              x.Coordinate == coordinate &&
+                                              x.RendererPath == rendererPath &&
+                                              x.MeshName == meshName &&
+                                              x.ShapeName == shapeName);
+        }
+
+        internal void CaptureBaseline(SkinnedMeshRenderer renderer, string shapeName)
+        {
+            if (renderer == null || renderer.sharedMesh == null)
+                return;
+
+            int index = BlendShapeUtilities.FindBlendShapeIndex(renderer, shapeName);
+            if (index < 0)
+                return;
+
+            BlendShapeTargetScope scope = GetEffectiveTargetScope(renderer);
+            int coordinate = scope == BlendShapeTargetScope.Character ? -1 : CurrentCoordinateIndex;
+            string key = MakeBaselineKey(renderer, shapeName, coordinate);
+            if (!_baselines.ContainsKey(key))
+                _baselines.Add(key, renderer.GetBlendShapeWeight(index));
+        }
+
+        internal void ApplyCurrentCoordinate()
+        {
+            if (ChaControl == null)
+                return;
+
+            NormalizeRecords();
+            int coordinate = CurrentCoordinateIndex;
+            MakerBlendShapeSyncPlugin.Log?.LogDebug(
+                $"Applying {Records.Count} blendshape record(s) for {ChaControl.name}, coordinate {coordinate}");
+
+            foreach (var record in Records.Where(x =>
+                         x.TargetScope == BlendShapeTargetScope.Character ||
+                         (x.TargetScope == BlendShapeTargetScope.CharacterCoordinate &&
+                          x.Coordinate == coordinate) ||
+                         ((x.TargetScope == BlendShapeTargetScope.Clothing ||
+                           x.TargetScope == BlendShapeTargetScope.Accessory) &&
+                          x.Coordinate == coordinate)))
+            {
+                TryApply(record);
+            }
+        }
+
+        private void TryApply(BlendShapeRecord record)
+        {
+            var renderer = BlendShapeUtilities.FindRenderer(ChaControl.transform, record);
+            if (renderer == null || renderer.sharedMesh == null)
+            {
+                MakerBlendShapeSyncPlugin.Log?.LogDebug(
+                    $"Renderer not found for blendshape {record.RendererPath} / {record.RendererName}");
+                return;
+            }
+
+            int index = BlendShapeUtilities.FindBlendShapeIndex(renderer, record.ShapeName);
+            if (index < 0)
+            {
+                MakerBlendShapeSyncPlugin.Log?.LogDebug(
+                    $"Blendshape not found: {record.ShapeName} on {renderer.name}");
+                return;
+            }
+
+            int coordinate = record.TargetScope == BlendShapeTargetScope.Character
+                ? -1
+                : CurrentCoordinateIndex;
+            string baselineKey = MakeBaselineKey(renderer, record.ShapeName, coordinate);
+            if (!_baselines.ContainsKey(baselineKey))
+                _baselines.Add(baselineKey, renderer.GetBlendShapeWeight(index));
+
+            renderer.SetBlendShapeWeight(index, record.Weight);
+        }
+
+        private void RestoreCoordinateBaselines(int coordinate)
+        {
+            if (ChaControl == null || coordinate < 0)
+                return;
+
+            NormalizeRecords();
+            foreach (var record in Records.Where(x =>
+                         (x.TargetScope == BlendShapeTargetScope.Clothing ||
+                          x.TargetScope == BlendShapeTargetScope.Accessory ||
+                          x.TargetScope == BlendShapeTargetScope.CharacterCoordinate) &&
+                         x.Coordinate == coordinate).ToList())
+            {
+                var renderer = BlendShapeUtilities.FindRenderer(ChaControl.transform, record);
+                RestoreBaseline(renderer, record.ShapeName, coordinate);
+            }
+        }
+
+        private void RestoreAllBaselines()
+        {
+            if (ChaControl == null)
+                return;
+
+            NormalizeRecords();
+            foreach (var record in Records.ToList())
+            {
+                var renderer = BlendShapeUtilities.FindRenderer(ChaControl.transform, record);
+                int coordinate = record.TargetScope == BlendShapeTargetScope.Character
+                    ? -1
+                    : record.Coordinate;
+                RestoreBaseline(renderer, record.ShapeName, coordinate);
+            }
+        }
+
+        private void RestoreBaseline(SkinnedMeshRenderer renderer, string shapeName, int coordinate)
+        {
+            if (renderer == null || renderer.sharedMesh == null)
+                return;
+
+            int index = BlendShapeUtilities.FindBlendShapeIndex(renderer, shapeName);
+            if (index < 0)
+                return;
+
+            string key = MakeBaselineKey(renderer, shapeName, coordinate);
+            if (_baselines.TryGetValue(key, out float baseline))
+                renderer.SetBlendShapeWeight(index, baseline);
+        }
+
+        private void NormalizeRecords()
+        {
+            if (Records.Count == 0 || ChaControl == null)
+                return;
+
+            var normalized = new List<BlendShapeRecord>();
+            int coordinateCount = GetCoordinateCount();
+
+            foreach (var source in Records
+                         .OrderBy(x => x.Coordinate == CurrentCoordinateIndex ? 1 : 0)
+                         .ToList())
+            {
+                var renderer = BlendShapeUtilities.FindRenderer(ChaControl.transform, source);
+                BlendShapeTargetScope scope = renderer != null
+                    ? GetEffectiveTargetScope(renderer)
+                    : source.TargetScope;
+
+                if (scope == BlendShapeTargetScope.Unknown)
+                    scope = BlendShapeUtilities.InferLegacyScope(source);
+
+                if (scope == BlendShapeTargetScope.Character)
+                {
+                    var record = CloneRecord(source, scope, -1);
+                    record.Slot = -1;
+                    record.SlotRelativePath = "";
+                    AddNormalizedRecord(normalized, record);
+                }
+                else if (scope == BlendShapeTargetScope.CharacterCoordinate)
+                {
+                    if (source.Coordinate < 0)
+                    {
+                        for (int coordinate = 0; coordinate < coordinateCount; coordinate++)
+                            AddNormalizedRecord(normalized,
+                                CloneBodyRecord(source, scope, coordinate));
+                    }
+                    else
+                    {
+                        AddNormalizedRecord(normalized,
+                            CloneBodyRecord(source, scope, source.Coordinate));
+                    }
+                }
+                else if (scope == BlendShapeTargetScope.Clothing ||
+                         scope == BlendShapeTargetScope.Accessory)
+                {
+                    source.TargetScope = scope;
+                    BlendShapeUtilities.TryPopulateSlotIdentity(ChaControl, source);
+                    if (source.Coordinate < 0)
+                    {
+                        for (int coordinate = 0; coordinate < coordinateCount; coordinate++)
+                            AddNormalizedRecord(normalized, CloneRecord(source, scope, coordinate));
+                    }
+                    else
+                    {
+                        AddNormalizedRecord(normalized, CloneRecord(source, scope, source.Coordinate));
+                    }
+                }
+                else
+                {
+                    AddNormalizedRecord(normalized, CloneRecord(source, BlendShapeTargetScope.Unknown,
+                        source.Coordinate));
+                }
+            }
+
+            Records.Clear();
+            Records.AddRange(normalized);
+        }
+
+        private static BlendShapeRecord CloneRecord(BlendShapeRecord source,
+            BlendShapeTargetScope scope, int coordinate)
+        {
+            return new BlendShapeRecord
+            {
+                TargetScope = scope,
+                Coordinate = coordinate,
+                Slot = source.Slot,
+                SlotRelativePath = source.SlotRelativePath,
+                RendererPath = source.RendererPath,
+                RendererName = source.RendererName,
+                MeshName = source.MeshName,
+                ShapeName = source.ShapeName,
+                Weight = source.Weight
+            };
+        }
+
+        private static void AddNormalizedRecord(List<BlendShapeRecord> records, BlendShapeRecord record)
+        {
+            records.RemoveAll(x => IsSameRecord(x, record));
+            records.Add(record);
+        }
+
+        private void RemoveMatchingRecord(BlendShapeRecord record)
+        {
+            Records.RemoveAll(x => IsSameRecord(x, record));
+        }
+
+        private static bool IsSameRecord(BlendShapeRecord left, BlendShapeRecord right)
+        {
+            if (left.TargetScope != right.TargetScope || left.Coordinate != right.Coordinate ||
+                left.MeshName != right.MeshName || left.ShapeName != right.ShapeName)
+                return false;
+
+            if (left.Slot >= 0 && right.Slot >= 0)
+                return left.Slot == right.Slot && left.SlotRelativePath == right.SlotRelativePath;
+            return left.RendererPath == right.RendererPath;
+        }
+
+        private static BlendShapeRecord CloneForSlot(BlendShapeRecord source, int coordinate, int slot)
+        {
+            var clone = CloneRecord(source, source.TargetScope, coordinate);
+            clone.Slot = slot;
+            return clone;
+        }
+
+        private static BlendShapeRecord CloneBodyRecord(BlendShapeRecord source,
+            BlendShapeTargetScope scope, int coordinate)
+        {
+            var clone = CloneRecord(source, scope, coordinate);
+            clone.Slot = -1;
+            clone.SlotRelativePath = "";
+            return clone;
+        }
+
+        private int GetCoordinateCount()
+        {
+            int count = ChaControl.chaFile?.coordinate?.Length ?? 0;
+            return count > 0 ? count : Mathf.Max(CurrentCoordinateIndex + 1, 1);
+        }
+
+        private int BuildTopologyFingerprint()
+        {
+            unchecked
+            {
+                int hash = 17;
+                hash = hash * 31 + (ChaControl == null ? -1 : CurrentCoordinateIndex);
+                if (ChaControl == null)
+                    return hash;
+
+                foreach (var renderer in BlendShapeUtilities.EnumerateRenderers(ChaControl.transform))
+                {
+                    if (renderer == null)
+                        continue;
+
+                    hash = hash * 31 + renderer.GetInstanceID();
+                    hash = hash * 31 + (renderer.sharedMesh == null
+                        ? 0
+                        : renderer.sharedMesh.GetInstanceID());
+                }
+                return hash;
+            }
+        }
+
+        private static string MakeBaselineKey(SkinnedMeshRenderer renderer, string shapeName, int coordinate)
+        {
+            int meshId = renderer.sharedMesh == null ? 0 : renderer.sharedMesh.GetInstanceID();
+            return renderer.GetInstanceID() + "|" + meshId + "|" + coordinate + "|" + shapeName;
+        }
+
+        private void LoadFromExtendedData()
+        {
+            Records.Clear();
+            PerCoordinateRenderers.Clear();
+            var data = ExtendedSave.GetExtendedDataById(LoadedChaFile, MakerBlendShapeSyncPlugin.ExtDataKey);
+            var bytes = data?.data != null &&
+                        data.data.TryGetValue(DataKey, out var value)
+                ? value as byte[]
+                : null;
+            if (bytes != null)
+            {
+                var unpacked = MessagePackSerializer.Deserialize<BlendShapeSyncData>(bytes);
+                if (unpacked?.Records != null)
+                    Records.AddRange(unpacked.Records);
+                if (unpacked?.PerCoordinateRenderers != null)
+                    PerCoordinateRenderers.AddRange(unpacked.PerCoordinateRenderers);
+            }
+
+            NormalizeRecords();
+            MakerBlendShapeSyncPlugin.Log?.LogDebug(
+                $"Loaded {Records.Count} blendshape record(s) from character ExtendedData.");
+        }
+
+        private void SaveToExtendedData()
+        {
+            NormalizeRecords();
+            if (Records.Count == 0 && PerCoordinateRenderers.Count == 0)
+            {
+                SetExtendedData(null);
+                return;
+            }
+
+            var data = new PluginData { version = DataVersion };
+            data.data[DataKey] = MessagePackSerializer.Serialize(
+                new BlendShapeSyncData
+                {
+                    Records = Records,
+                    PerCoordinateRenderers = PerCoordinateRenderers
+                });
+            SetExtendedData(data);
+            MakerBlendShapeSyncPlugin.Log?.LogDebug(
+                $"Saved {Records.Count} blendshape record(s) to character ExtendedData.");
+        }
+
+        private void SaveCoordinateRecordsTo(ChaFileCoordinate coordinate, int sourceCoordinate)
+        {
+            if (coordinate == null)
+                return;
+
+            NormalizeRecords();
+            var records = Records.Where(x =>
+                    (x.TargetScope == BlendShapeTargetScope.Clothing ||
+                     x.TargetScope == BlendShapeTargetScope.Accessory) &&
+                    x.Coordinate == sourceCoordinate)
+                .Select(x => CloneRecord(x, x.TargetScope, 0)).ToList();
+
+            if (records.Count == 0)
+            {
+                SetCoordinateExtendedData(coordinate, null);
+                return;
+            }
+
+            var data = new PluginData { version = DataVersion };
+            data.data[DataKey] = MessagePackSerializer.Serialize(
+                new BlendShapeSyncData { Records = records });
+            SetCoordinateExtendedData(coordinate, data);
+        }
+
+        private void LoadCoordinateRecordsFrom(ChaFileCoordinate coordinate, int targetCoordinate,
+            bool loadClothing, bool loadAccessories)
+        {
+            var loaded = ReadCoordinateRecords(coordinate);
+            Records.RemoveAll(x => x.Coordinate == targetCoordinate &&
+                ((loadClothing && x.TargetScope == BlendShapeTargetScope.Clothing) ||
+                 (loadAccessories && x.TargetScope == BlendShapeTargetScope.Accessory)));
+
+            if (loaded != null)
+            {
+                foreach (var source in loaded)
+                {
+                    if ((source.TargetScope == BlendShapeTargetScope.Clothing && !loadClothing) ||
+                        (source.TargetScope == BlendShapeTargetScope.Accessory && !loadAccessories) ||
+                        (source.TargetScope != BlendShapeTargetScope.Clothing &&
+                         source.TargetScope != BlendShapeTargetScope.Accessory))
+                        continue;
+
+                    AddNormalizedRecord(Records,
+                        CloneRecord(source, source.TargetScope, targetCoordinate));
+                }
+            }
+
+            NormalizeRecords();
+        }
+
+        private List<BlendShapeRecord> ReadCoordinateRecords(ChaFileCoordinate coordinate)
+        {
+            if (coordinate == null)
+                return null;
+
+            var data = GetCoordinateExtendedData(coordinate);
+            if (data?.data == null || !data.data.TryGetValue(DataKey, out var value) ||
+                !(value is byte[] bytes))
+                return null;
+
+            var unpacked = MessagePackSerializer.Deserialize<BlendShapeSyncData>(bytes);
+            return unpacked?.Records ?? new List<BlendShapeRecord>();
+        }
+    }
+}

@@ -1,0 +1,10 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)Core\StableIdentity.cs" Link="Shared\Core\StableIdentity.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Core\TransformPath.cs" Link="Shared\Core\TransformPath.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Runtime\CoroutineUtility.cs" Link="Shared\Runtime\CoroutineUtility.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Runtime\TopologyFingerprint.cs" Link="Shared\Runtime\TopologyFingerprint.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Compatibility\PluginProbe.cs" Link="Shared\Compatibility\PluginProbe.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Compatibility\CoordinateLoadOptionPatcher.cs" Link="Shared\Compatibility\CoordinateLoadOptionPatcher.cs" />
+  </ItemGroup>
+</Project>

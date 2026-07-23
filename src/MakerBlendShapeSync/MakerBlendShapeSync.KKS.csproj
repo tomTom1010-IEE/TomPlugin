@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net462</TargetFramework>
+    <AssemblyName>KKS_MakerBlendShapeSync</AssemblyName>
+    <RootNamespace>MakerBlendShapeSync</RootNamespace>
+    <DefineConstants>$(DefineConstants);KKS;KOIKATSU;SUNSHINE</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="KKAPI">
+      <HintPath>$(RepoRoot)lib\KKS\BepInEx\plugins\KKSAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="ExtensibleSaveFormat">
+      <HintPath>$(RepoRoot)lib\KKS\BepInEx\plugins\KKS_BepisPlugins\KKS_ExtensibleSaveFormat.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="KKSPE">
+      <HintPath>$(RepoRoot)lib\KKS\BepInEx\plugins\KKSPE.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+  <Import Project="$(RepoRoot)build\References.KKS.props" />
+</Project>
+

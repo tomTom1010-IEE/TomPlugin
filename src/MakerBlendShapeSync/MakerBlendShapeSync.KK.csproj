@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net35</TargetFramework>
+    <AssemblyName>KK_MakerBlendShapeSync</AssemblyName>
+    <RootNamespace>MakerBlendShapeSync</RootNamespace>
+    <DefineConstants>$(DefineConstants);KK;KOIKATSU</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="KKAPI">
+      <HintPath>$(RepoRoot)lib\KK\BepInEx\plugins\KKAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="ExtensibleSaveFormat">
+      <HintPath>$(RepoRoot)lib\KK\BepInEx\plugins\ExtensibleSaveFormat.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="KKPE">
+      <HintPath>$(RepoRoot)lib\KK\BepInEx\plugins\KKPE.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+  <Import Project="$(RepoRoot)build\References.KK.props" />
+</Project>

@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net462</TargetFramework>
+    <AssemblyName>KKS_DBDECoordinateLoadBridge</AssemblyName>
+    <RootNamespace>DBDECoordinateLoadBridge</RootNamespace>
+    <DefineConstants>$(DefineConstants);KKS;KOIKATSU;SUNSHINE</DefineConstants>
+  </PropertyGroup>
+  <Import Project="$(RepoRoot)build\References.KKS.props" />
+</Project>
+

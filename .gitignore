@@ -1,0 +1,10 @@
+artifacts/
+lib/**/*.dll
+.vs/
+*.user
+*.suo
+*.csproj.user
+Thumbs.db
+Desktop.ini
+.DS_Store
+

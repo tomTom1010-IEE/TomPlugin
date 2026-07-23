@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net35</TargetFramework>
+    <AssemblyName>KK_DBDECoordinateLoadBridge</AssemblyName>
+    <RootNamespace>DBDECoordinateLoadBridge</RootNamespace>
+    <DefineConstants>$(DefineConstants);KK;KOIKATSU</DefineConstants>
+  </PropertyGroup>
+  <Import Project="$(RepoRoot)build\References.KK.props" />
+</Project>
+

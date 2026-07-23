@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net462</TargetFramework>
+    <AssemblyName>KKS_AccessoryBoneBinder</AssemblyName>
+    <RootNamespace>AccessoryBoneBinder</RootNamespace>
+    <DefineConstants>$(DefineConstants);KKS;KOIKATSU;SUNSHINE</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="KKAPI">
+      <HintPath>$(RepoRoot)lib\KKS\BepInEx\plugins\KKSAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="ModBoneImplantor">
+      <HintPath>$(RepoRoot)lib\KKS\BepInEx\plugins\ModBoneImplantor.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="KKSABMX">
+      <HintPath>$(RepoRoot)lib\KKS\BepInEx\plugins\KKSABMX.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+  <Import Project="$(RepoRoot)build\References.KKS.props" />
+</Project>
+

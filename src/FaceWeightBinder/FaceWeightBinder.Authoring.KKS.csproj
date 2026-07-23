@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net462</TargetFramework>
+    <AssemblyName>FaceWeightBinder</AssemblyName>
+    <RootNamespace>FaceWeightBinder</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <LangVersion>7.3</LangVersion>
+    <DefineConstants>$(DefineConstants);KKS;KOIKATSU;SUNSHINE</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Shared\FaceWeightProcess.cs" />
+    <Compile Include="Properties\AuthoringAssemblyInfo.cs" />
+    <Reference Include="UnityEngine">
+      <HintPath>$(RepoRoot)lib\KKS\Managed\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(RepoRoot)lib\KKS\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>
+

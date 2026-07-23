@@ -1,0 +1,8 @@
+<Project>
+  <Target Name="DoNotCopyGameReferences" AfterTargets="ResolveReferences">
+    <ItemGroup>
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" />
+    </ItemGroup>
+  </Target>
+</Project>
+

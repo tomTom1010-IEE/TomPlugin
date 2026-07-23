@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net462</TargetFramework>
+    <AssemblyName>FaceWeightBinder</AssemblyName>
+    <RootNamespace>FaceWeightBinder</RootNamespace>
+    <DefineConstants>$(DefineConstants);KKS;KOIKATSU;SUNSHINE</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="Unity\Editor\**\*.cs" />
+    <Compile Remove="Properties\AuthoringAssemblyInfo.cs" />
+    <Reference Include="KKAPI">
+      <HintPath>$(RepoRoot)lib\KKS\Versions\KKSAPI\1.42.2\KKSAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+  <Import Project="$(RepoRoot)build\References.KKS.props" />
+  <Import Project="$(RepoRoot)shared\TomTom.KKMod.Shared\TomTom.KKMod.Shared.projitems" Label="Shared" />
+</Project>

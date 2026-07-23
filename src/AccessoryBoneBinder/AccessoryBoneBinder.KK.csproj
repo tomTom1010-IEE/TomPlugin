@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net35</TargetFramework>
+    <AssemblyName>KK_AccessoryBoneBinder</AssemblyName>
+    <RootNamespace>AccessoryBoneBinder</RootNamespace>
+    <DefineConstants>$(DefineConstants);KK;KOIKATSU</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="KKAPI">
+      <HintPath>$(RepoRoot)lib\KK\BepInEx\plugins\KKAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="ModBoneImplantor">
+      <HintPath>$(RepoRoot)lib\KK\BepInEx\plugins\ModBoneImplantor.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="KKABMX">
+      <HintPath>$(RepoRoot)lib\KK\BepInEx\plugins\KKABMX.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+  <Import Project="$(RepoRoot)build\References.KK.props" />
+</Project>
