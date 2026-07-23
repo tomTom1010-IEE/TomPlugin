@@ -15,20 +15,41 @@ namespace MakerBlendShapeSync
         private const string DataKey = "BlendShapeSyncData";
         private const int DataVersion = 5;
         private const float TopologyPollInterval = 0.2f;
-        private const float StableApplyDuration = 0.8f;
-        private const float ApplyRetryInterval = 0.2f;
+        private const int StableApplyFrames = 3;
+        private const float StableApplyDuration = 0.15f;
         private const float ApplyTimeout = 3f;
+
+        private sealed class BaselineState
+        {
+            internal SkinnedMeshRenderer Renderer;
+            internal Mesh Mesh;
+            internal string ShapeName;
+            internal int ShapeIndex;
+            internal int Coordinate;
+            internal float Weight;
+        }
+
+        internal sealed class RendererMeshReplacementState
+        {
+            internal BlendShapeSyncController Controller;
+            internal SkinnedMeshRenderer Destination;
+            internal string OldMeshName;
+            internal readonly List<int> ShapeIndices = new List<int>();
+            internal readonly List<string> ShapeNames = new List<string>();
+        }
 
         internal readonly List<BlendShapeRecord> Records = new List<BlendShapeRecord>();
         internal readonly List<RendererScopeOverride> PerCoordinateRenderers =
             new List<RendererScopeOverride>();
 
-        private readonly Dictionary<string, float> _baselines = new Dictionary<string, float>();
+        private readonly Dictionary<string, BaselineState> _baselines =
+            new Dictionary<string, BaselineState>();
         private Coroutine _scheduledApply;
         private float _nextTopologyPoll;
         private int _topologyFingerprint = int.MinValue;
         private int _observedCoordinate = -1;
         private int _rendererGeneration;
+        private int _applyRevision;
 
         public int CurrentCoordinateIndex => ChaControl.fileStatus.coordinateType;
         internal int RendererGeneration => _rendererGeneration;
@@ -40,12 +61,11 @@ namespace MakerBlendShapeSync
 
         protected override void OnReload(GameMode currentGameMode, bool maintainState)
         {
+            CancelScheduledApply();
             if (!maintainState)
             {
-                if (MakerAPI.InsideMaker)
-                    RestoreAllBaselines();
+                RestoreAllBaselines();
 
-                _baselines.Clear();
                 LoadFromExtendedData();
                 _observedCoordinate = CurrentCoordinateIndex;
                 _topologyFingerprint = int.MinValue;
@@ -69,6 +89,7 @@ namespace MakerBlendShapeSync
 
         protected override void OnCoordinateBeingLoaded(ChaFileCoordinate coordinate)
         {
+            CancelScheduledApply();
             if (MakerAPI.InsideMaker && _observedCoordinate >= 0)
                 RestoreCoordinateBaselines(_observedCoordinate);
 
@@ -83,8 +104,8 @@ namespace MakerBlendShapeSync
 
         protected override void OnDestroy()
         {
-            if (_scheduledApply != null)
-                StopCoroutine(_scheduledApply);
+            CancelScheduledApply();
+            _baselines.Clear();
             base.OnDestroy();
         }
 
@@ -119,34 +140,58 @@ namespace MakerBlendShapeSync
 
         internal void ScheduleApply()
         {
-            if (_scheduledApply != null)
-                StopCoroutine(_scheduledApply);
+            CancelScheduledApply();
+            int revision = _applyRevision;
 
             _scheduledApply = StartCoroutine(MakerAPI.InsideMaker
-                ? ApplyWhenMakerStable()
-                : DelayedApply());
+                ? ApplyWhenMakerStable(revision)
+                : DelayedApply(revision));
         }
 
-        private IEnumerator DelayedApply()
+        private void CancelScheduledApply()
+        {
+            _applyRevision++;
+            if (_scheduledApply != null)
+            {
+                StopCoroutine(_scheduledApply);
+                _scheduledApply = null;
+            }
+        }
+
+        private bool IsApplyRevisionCurrent(int revision)
+        {
+            return revision == _applyRevision;
+        }
+
+        private IEnumerator DelayedApply(int revision)
         {
             yield return null;
+            if (!IsApplyRevisionCurrent(revision))
+                yield break;
+
             yield return null;
+            if (!IsApplyRevisionCurrent(revision))
+                yield break;
+
             ApplyCurrentCoordinate();
             StudioPoseEditorBridge.ScheduleForCharacter(ChaControl);
-            _scheduledApply = null;
+            if (IsApplyRevisionCurrent(revision))
+                _scheduledApply = null;
         }
 
-        private IEnumerator ApplyWhenMakerStable()
+        private IEnumerator ApplyWhenMakerStable(int revision)
         {
             float startedAt = Time.realtimeSinceStartup;
             float stableSince = -1f;
-            float nextApplyAt = 0f;
             int previousFingerprint = BuildTopologyFingerprint();
             int stableFrames = 0;
+            bool applied = false;
 
             while (Time.realtimeSinceStartup - startedAt < ApplyTimeout)
             {
                 yield return new WaitForEndOfFrame();
+                if (!IsApplyRevisionCurrent(revision))
+                    yield break;
 
                 int fingerprint = BuildTopologyFingerprint();
                 if (fingerprint != previousFingerprint)
@@ -160,28 +205,26 @@ namespace MakerBlendShapeSync
                 }
 
                 stableFrames++;
-                if (stableFrames < 2)
+                if (stableFrames < StableApplyFrames)
                     continue;
 
                 float now = Time.realtimeSinceStartup;
                 if (stableSince < 0f)
-                {
                     stableSince = now;
-                    nextApplyAt = now;
-                }
-
-                if (now >= nextApplyAt)
-                {
-                    ApplyCurrentCoordinate();
-                    nextApplyAt = now + ApplyRetryInterval;
-                }
 
                 if (now - stableSince >= StableApplyDuration)
                 {
                     ApplyCurrentCoordinate();
+                    applied = true;
                     break;
                 }
             }
+
+            if (!IsApplyRevisionCurrent(revision))
+                yield break;
+
+            if (!applied)
+                ApplyCurrentCoordinate();
 
             _observedCoordinate = CurrentCoordinateIndex;
             _scheduledApply = null;
@@ -389,9 +432,7 @@ namespace MakerBlendShapeSync
 
             BlendShapeTargetScope scope = GetEffectiveTargetScope(renderer);
             int coordinate = scope == BlendShapeTargetScope.Character ? -1 : CurrentCoordinateIndex;
-            string key = MakeBaselineKey(renderer, shapeName, coordinate);
-            if (!_baselines.ContainsKey(key))
-                _baselines.Add(key, renderer.GetBlendShapeWeight(index));
+            CaptureBaseline(renderer, shapeName, coordinate, index);
         }
 
         internal void ApplyCurrentCoordinate()
@@ -399,6 +440,7 @@ namespace MakerBlendShapeSync
             if (ChaControl == null)
                 return;
 
+            PruneInvalidBaselines();
             NormalizeRecords();
             int coordinate = CurrentCoordinateIndex;
             MakerBlendShapeSyncPlugin.Log?.LogDebug(
@@ -437,58 +479,174 @@ namespace MakerBlendShapeSync
             int coordinate = record.TargetScope == BlendShapeTargetScope.Character
                 ? -1
                 : CurrentCoordinateIndex;
-            string baselineKey = MakeBaselineKey(renderer, record.ShapeName, coordinate);
-            if (!_baselines.ContainsKey(baselineKey))
-                _baselines.Add(baselineKey, renderer.GetBlendShapeWeight(index));
-
+            CaptureBaseline(renderer, record.ShapeName, coordinate, index);
             renderer.SetBlendShapeWeight(index, record.Weight);
         }
 
         private void RestoreCoordinateBaselines(int coordinate)
         {
-            if (ChaControl == null || coordinate < 0)
+            if (coordinate < 0)
                 return;
 
-            NormalizeRecords();
-            foreach (var record in Records.Where(x =>
-                         (x.TargetScope == BlendShapeTargetScope.Clothing ||
-                          x.TargetScope == BlendShapeTargetScope.Accessory ||
-                          x.TargetScope == BlendShapeTargetScope.CharacterCoordinate) &&
-                         x.Coordinate == coordinate).ToList())
+            int restored = 0;
+            var matches = _baselines
+                .Where(x => x.Value.Coordinate == coordinate)
+                .ToList();
+            foreach (var match in matches)
             {
-                var renderer = BlendShapeUtilities.FindRenderer(ChaControl.transform, record);
-                RestoreBaseline(renderer, record.ShapeName, coordinate);
+                if (TryRestoreBaseline(match.Value))
+                    restored++;
+                _baselines.Remove(match.Key);
             }
+
+            LogBaselineRestore("coordinate " + coordinate, restored, matches.Count);
         }
 
         private void RestoreAllBaselines()
         {
-            if (ChaControl == null)
-                return;
-
-            NormalizeRecords();
-            foreach (var record in Records.ToList())
+            int restored = 0;
+            var matches = _baselines.ToList();
+            foreach (var match in matches)
             {
-                var renderer = BlendShapeUtilities.FindRenderer(ChaControl.transform, record);
-                int coordinate = record.TargetScope == BlendShapeTargetScope.Character
-                    ? -1
-                    : record.Coordinate;
-                RestoreBaseline(renderer, record.ShapeName, coordinate);
+                if (TryRestoreBaseline(match.Value))
+                    restored++;
             }
+
+            _baselines.Clear();
+            LogBaselineRestore("character reload", restored, matches.Count);
         }
 
         private void RestoreBaseline(SkinnedMeshRenderer renderer, string shapeName, int coordinate)
         {
-            if (renderer == null || renderer.sharedMesh == null)
-                return;
-
-            int index = BlendShapeUtilities.FindBlendShapeIndex(renderer, shapeName);
-            if (index < 0)
+            if (renderer == null)
                 return;
 
             string key = MakeBaselineKey(renderer, shapeName, coordinate);
-            if (_baselines.TryGetValue(key, out float baseline))
-                renderer.SetBlendShapeWeight(index, baseline);
+            if (!_baselines.TryGetValue(key, out var state))
+                return;
+
+            TryRestoreBaseline(state);
+            _baselines.Remove(key);
+        }
+
+        private void CaptureBaseline(SkinnedMeshRenderer renderer, string shapeName,
+            int coordinate, int shapeIndex)
+        {
+            string key = MakeBaselineKey(renderer, shapeName, coordinate);
+            if (_baselines.ContainsKey(key))
+                return;
+
+            _baselines.Add(key, new BaselineState
+            {
+                Renderer = renderer,
+                Mesh = renderer.sharedMesh,
+                ShapeName = shapeName,
+                ShapeIndex = shapeIndex,
+                Coordinate = coordinate,
+                Weight = renderer.GetBlendShapeWeight(shapeIndex)
+            });
+        }
+
+        internal RendererMeshReplacementState PrepareRendererMeshReplacement(
+            SkinnedMeshRenderer destination)
+        {
+            if (destination == null)
+                return null;
+
+            var matches = _baselines
+                .Where(x => x.Value != null && x.Value.Renderer == destination)
+                .ToList();
+            if (matches.Count == 0)
+                return null;
+
+            CancelScheduledApply();
+            var state = new RendererMeshReplacementState
+            {
+                Controller = this,
+                Destination = destination,
+                OldMeshName = destination.sharedMesh == null ? "" : destination.sharedMesh.name
+            };
+
+            int restored = 0;
+            foreach (var match in matches)
+            {
+                var baseline = match.Value;
+                if (TryRestoreBaseline(baseline))
+                    restored++;
+                if (baseline.ShapeIndex >= 0)
+                    state.ShapeIndices.Add(baseline.ShapeIndex);
+                if (!string.IsNullOrEmpty(baseline.ShapeName))
+                    state.ShapeNames.Add(baseline.ShapeName);
+                _baselines.Remove(match.Key);
+            }
+
+            MakerBlendShapeSyncPlugin.Log?.LogDebug(
+                $"Prepared {matches.Count} blendshape baseline(s) for renderer mesh replacement " +
+                $"on {destination.name}; restored {restored} before replacing {state.OldMeshName}.");
+            return state;
+        }
+
+        internal void CompleteRendererMeshReplacement(RendererMeshReplacementState state,
+            SkinnedMeshRenderer source, SkinnedMeshRenderer destination)
+        {
+            if (state == null || state.Controller != this || state.Destination != destination ||
+                source == null || source.sharedMesh == null ||
+                destination == null || destination.sharedMesh == null)
+                return;
+
+            int blendShapeCount = Mathf.Min(
+                source.sharedMesh.blendShapeCount,
+                destination.sharedMesh.blendShapeCount);
+            var resetIndices = new HashSet<int>(
+                state.ShapeIndices.Where(x => x >= 0 && x < blendShapeCount));
+            foreach (string shapeName in state.ShapeNames.Distinct())
+            {
+                int index = BlendShapeUtilities.FindBlendShapeIndex(destination, shapeName);
+                if (index >= 0 && index < blendShapeCount)
+                    resetIndices.Add(index);
+            }
+
+            foreach (int index in resetIndices)
+                destination.SetBlendShapeWeight(index, source.GetBlendShapeWeight(index));
+
+            MakerBlendShapeSyncPlugin.Log?.LogDebug(
+                $"Reset {resetIndices.Count} inherited blendshape slot(s) on {destination.name} " +
+                $"after Uncensor Selector changed {state.OldMeshName} to {destination.sharedMesh.name}.");
+            ScheduleApply();
+        }
+
+        private static bool TryRestoreBaseline(BaselineState state)
+        {
+            if (state == null || state.Renderer == null || state.Mesh == null ||
+                state.Renderer.sharedMesh != state.Mesh)
+                return false;
+
+            int index = BlendShapeUtilities.FindBlendShapeIndex(state.Renderer, state.ShapeName);
+            if (index < 0)
+                return false;
+
+            state.Renderer.SetBlendShapeWeight(index, state.Weight);
+            return true;
+        }
+
+        private void PruneInvalidBaselines()
+        {
+            var invalidKeys = _baselines
+                .Where(x => x.Value == null || x.Value.Renderer == null ||
+                            x.Value.Mesh == null || x.Value.Renderer.sharedMesh != x.Value.Mesh)
+                .Select(x => x.Key)
+                .ToList();
+            foreach (string key in invalidKeys)
+                _baselines.Remove(key);
+        }
+
+        private static void LogBaselineRestore(string reason, int restored, int total)
+        {
+            if (total <= 0)
+                return;
+
+            MakerBlendShapeSyncPlugin.Log?.LogDebug(
+                $"Restored {restored}/{total} blendshape baseline(s) for {reason}.");
         }
 
         private void NormalizeRecords()
