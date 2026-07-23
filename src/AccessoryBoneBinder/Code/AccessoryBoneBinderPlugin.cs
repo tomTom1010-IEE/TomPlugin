@@ -7,7 +7,7 @@ using KKAPI.Maker;
 
 namespace AccessoryBoneBinder
 {
-    [BepInPlugin(GUID, Name, Version)]
+    [BepInPlugin(PluginGuid, Name, Version)]
     [BepInDependency(KoikatuAPI.GUID)]
     [BepInDependency("com.rclcircuit.bepinex.modboneimplantor")]
     [BepInDependency("KKABMX.Core", BepInDependency.DependencyFlags.SoftDependency)]
@@ -15,14 +15,16 @@ namespace AccessoryBoneBinder
     public sealed class AccessoryBoneBinderPlugin : BaseUnityPlugin
     {
 #if KK
-        public const string GUID = "tomtom.kk.accessorybonebinder";
+        public const string PluginGuid = "tomtom.kk.accessorybonebinder";
         public const string Name = "KK_AccessoryBoneBinder";
         public const string Version = "0.2.2.0";
 #else
-        public const string GUID = "tomtom.kks.accessorybonebinder";
+        public const string PluginGuid = "tomtom.kks.accessorybonebinder";
         public const string Name = "KKS_AccessoryBoneBinder";
         public const string Version = "0.2.2.0";
 #endif
+        [System.Obsolete("Use PluginGuid.")]
+        public const string GUID = PluginGuid;
 
         internal static ManualLogSource Log;
 
@@ -31,8 +33,8 @@ namespace AccessoryBoneBinder
         private void Awake()
         {
             Log = Logger;
-            CharacterApi.RegisterExtraBehaviour<AccessoryBoneBinderController>(GUID);
-            _harmony = new Harmony(GUID);
+            CharacterApi.RegisterExtraBehaviour<AccessoryBoneBinderController>(null);
+            _harmony = new Harmony(PluginGuid);
             _harmony.PatchAll(typeof(AccessoryHooks));
             CoordinateLoadOptionBridge.TryPatch(_harmony);
             AccessoriesApi.AccessoryKindChanged += AccessoriesApi_AccessoryKindChanged;

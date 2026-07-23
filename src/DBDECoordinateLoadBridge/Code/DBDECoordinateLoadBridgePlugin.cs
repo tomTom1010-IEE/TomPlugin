@@ -4,18 +4,21 @@ using HarmonyLib;
 
 namespace DBDECoordinateLoadBridge
 {
-    [BepInPlugin(GUID, Name, Version)]
+    [BepInPlugin(PluginGuid, Name, Version)]
     [BepInDependency(DbdeBridge.DbdeGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(DbdeBridge.CoordinateLoadOptionGuid, BepInDependency.DependencyFlags.SoftDependency)]
     public sealed class DBDECoordinateLoadBridgePlugin : BaseUnityPlugin
     {
 #if KK
-        public const string GUID = "tomtom.kk.dbdecoordinateloadbridge";
+        public const string PluginGuid = "tomtom.kk.dbdecoordinateloadbridge";
         public const string Name = "KK_DBDECoordinateLoadBridge";
 #else
-        public const string GUID = "tomtom.kks.dbdecoordinateloadbridge";
+        public const string PluginGuid = "tomtom.kks.dbdecoordinateloadbridge";
         public const string Name = "KKS_DBDECoordinateLoadBridge";
 #endif
+        [System.Obsolete("Use PluginGuid.")]
+        public const string GUID = PluginGuid;
+
         public const string Version = "0.2.0.0";
 
         internal static ManualLogSource Log;
@@ -25,7 +28,7 @@ namespace DBDECoordinateLoadBridge
         private void Awake()
         {
             Log = Logger;
-            _harmony = new Harmony(GUID);
+            _harmony = new Harmony(PluginGuid);
             DbdeBridge.TryPatch(_harmony);
         }
 

@@ -19,6 +19,13 @@ TomPlugin/
 - `KK` and `KKS` are set by their project files.
 - Platform-specific API signatures and plugin identifiers use small
   `#if KK` / `#if KKS` blocks close to the differing code.
+- `PluginGuid` identifies the loaded BepInEx plugin and may be platform-specific.
+  Persisted `DataId` values are platform-neutral compatibility contracts and
+  must not change after release.
+- Legacy public `GUID` constants remain as obsolete aliases so dependent source
+  and reflection-based integrations do not break during the naming transition.
+- Controllers that do not own ExtendedSave data register with a `null` data ID;
+  data remains owned by the plugin that serializes it, such as ABMX or DBDE.
 - Saved-data keys, public plugin GUIDs, assembly names, and versions remain
   compatible with the existing standalone builds.
 - `shared/TomTom.KKMod.Shared` is imported at compile time. It intentionally

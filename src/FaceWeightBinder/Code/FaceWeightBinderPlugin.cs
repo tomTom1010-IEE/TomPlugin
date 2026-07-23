@@ -8,7 +8,7 @@ using TomTom.KKMod.Shared;
 
 namespace FaceWeightBinder
 {
-    [BepInPlugin(GUID, Name, Version)]
+    [BepInPlugin(PluginGuid, Name, Version)]
     [BepInDependency(KoikatuAPI.GUID)]
 #if KK
     [BepInDependency("tomtom.kk.accessorybonebinder",
@@ -28,16 +28,19 @@ namespace FaceWeightBinder
     public sealed class FaceWeightBinderPlugin : BaseUnityPlugin
     {
 #if KK
-        public const string GUID = "tomtom.kk.faceweightbinder";
+        public const string PluginGuid = "tomtom.kk.faceweightbinder";
         public const string Name = "KK_FaceWeightBinder";
         internal const string CoordinateLoadOptionGuid =
             "com.jim60105.kk.coordinateloadoption";
 #else
-        public const string GUID = "tomtom.kks.faceweightbinder";
+        public const string PluginGuid = "tomtom.kks.faceweightbinder";
         public const string Name = "KKS_FaceWeightBinder";
         internal const string CoordinateLoadOptionGuid =
             "com.jim60105.kks.coordinateloadoption";
 #endif
+        [System.Obsolete("Use PluginGuid.")]
+        public const string GUID = PluginGuid;
+
         public const string Version = "0.1.7.0";
 
         internal static ManualLogSource Log;
@@ -46,9 +49,9 @@ namespace FaceWeightBinder
         private void Awake()
         {
             Log = Logger;
-            CharacterApi.RegisterExtraBehaviour<FaceWeightBinderController>(GUID);
+            CharacterApi.RegisterExtraBehaviour<FaceWeightBinderController>(null);
 
-            _harmony = new Harmony(GUID);
+            _harmony = new Harmony(PluginGuid);
             FaceWeightHooks.Install(_harmony);
             CoordinateLoadOptionPatcher.Install(
                 _harmony,

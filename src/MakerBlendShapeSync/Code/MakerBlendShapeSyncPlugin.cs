@@ -10,17 +10,20 @@ using UnityEngine;
 
 namespace MakerBlendShapeSync
 {
-    [BepInPlugin(GUID, Name, Version)]
+    [BepInPlugin(PluginGuid, Name, Version)]
     [BepInDependency("marco.kkapi", "1.28")]
     [BepInDependency("com.bepis.bepinex.extendedsave")]
     [BepInDependency("com.joan6694.kkplugins.kkpe", BepInDependency.DependencyFlags.SoftDependency)]
     public sealed class MakerBlendShapeSyncPlugin : BaseUnityPlugin
     {
 #if KK
-        public const string GUID = "tomtom.kk.makerblendshapesync";
+        public const string PluginGuid = "tomtom.kk.makerblendshapesync";
 #else
-        public const string GUID = "tomtom.kks.makerblendshapesync";
+        public const string PluginGuid = "tomtom.kks.makerblendshapesync";
 #endif
+        [System.Obsolete("Use PluginGuid.")]
+        public const string GUID = PluginGuid;
+
         public const string Name = "MakerBlendShapeSync";
 #if KK
         public const string Version = "0.5.1.0";
@@ -28,7 +31,7 @@ namespace MakerBlendShapeSync
         public const string Version = "0.5.1.0";
 #endif
 
-        internal const string ExtDataKey = "MakerBlendShapeSync";
+        internal const string DataId = "MakerBlendShapeSync";
         internal static ManualLogSource Log;
         internal static MakerBlendShapeWindow MakerWindow;
         internal static SidebarToggle MakerSidebarToggle;
@@ -41,8 +44,8 @@ namespace MakerBlendShapeSync
 
         private void Start()
         {
-            CharacterApi.RegisterExtraBehaviour<BlendShapeSyncController>(ExtDataKey);
-            _harmony = new Harmony(GUID);
+            CharacterApi.RegisterExtraBehaviour<BlendShapeSyncController>(DataId);
+            _harmony = new Harmony(PluginGuid);
             MakerCopyHooks.Init(_harmony);
             InitMakerDataHooks();
             InitMakerUi();

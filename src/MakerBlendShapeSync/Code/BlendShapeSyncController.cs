@@ -652,7 +652,7 @@ namespace MakerBlendShapeSync
         {
             Records.Clear();
             PerCoordinateRenderers.Clear();
-            var data = ExtendedSave.GetExtendedDataById(LoadedChaFile, MakerBlendShapeSyncPlugin.ExtDataKey);
+            var data = ExtendedSave.GetExtendedDataById(LoadedChaFile, MakerBlendShapeSyncPlugin.DataId);
             var bytes = data?.data != null &&
                         data.data.TryGetValue(DataKey, out var value)
                 ? value as byte[]
