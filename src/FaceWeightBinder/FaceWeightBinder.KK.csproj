@@ -4,16 +4,17 @@
     <AssemblyName>FaceWeightBinder</AssemblyName>
     <RootNamespace>FaceWeightBinder</RootNamespace>
     <DefineConstants>$(DefineConstants);KK;KOIKATSU</DefineConstants>
+    <KKApiReferencePath Condition="'$(KKApiReferencePath)' == ''">$(RepoRoot)lib\KK\BepInEx\plugins\KKAPI.dll</KKApiReferencePath>
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="Unity\Editor\**\*.cs" />
     <Compile Remove="Properties\AuthoringAssemblyInfo.cs" />
     <Reference Include="KKAPI">
-      <HintPath>$(RepoRoot)lib\KK\BepInEx\plugins\KKAPI.dll</HintPath>
+      <HintPath>$(KKApiReferencePath)</HintPath>
+      <SpecificVersion>false</SpecificVersion>
       <Private>false</Private>
     </Reference>
   </ItemGroup>
   <Import Project="$(RepoRoot)build\References.KK.props" />
   <Import Project="$(RepoRoot)shared\TomTom.KKMod.Shared\TomTom.KKMod.Shared.projitems" Label="Shared" />
 </Project>
-

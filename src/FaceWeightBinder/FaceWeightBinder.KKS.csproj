@@ -4,12 +4,15 @@
     <AssemblyName>FaceWeightBinder</AssemblyName>
     <RootNamespace>FaceWeightBinder</RootNamespace>
     <DefineConstants>$(DefineConstants);KKS;KOIKATSU;SUNSHINE</DefineConstants>
+    <!-- Build reference only; not a runtime path or exact-version requirement. -->
+    <KKSApiReferencePath Condition="'$(KKSApiReferencePath)' == ''">$(RepoRoot)lib\KKS\Versions\KKSAPI\1.42.2\KKSAPI.dll</KKSApiReferencePath>
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="Unity\Editor\**\*.cs" />
     <Compile Remove="Properties\AuthoringAssemblyInfo.cs" />
     <Reference Include="KKAPI">
-      <HintPath>$(RepoRoot)lib\KKS\Versions\KKSAPI\1.42.2\KKSAPI.dll</HintPath>
+      <HintPath>$(KKSApiReferencePath)</HintPath>
+      <SpecificVersion>false</SpecificVersion>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

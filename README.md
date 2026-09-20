@@ -19,6 +19,11 @@ DLL 名称和版本；同一插件的 KK/KKS 版本共用平台无关的 BepInEx
 | DBDECoordinateLoadBridge | Yes | Yes | No |
 | FaceWeightBinder | Yes | Yes | KK 5.6.2f1 / KKS 2019 |
 
+FaceWeightBinder 初版 `0.2.0.0` 默认关闭诊断日志和状态快照，详见
+[发布说明](src/FaceWeightBinder/RELEASE_NOTES.md)。制作面部权重饰品时，
+**必须先添加 Cha Acc 组件，再添加 Face Weight Process 权重组件**；反序已观察到
+模型放大 100 倍的问题。配置完成后再捕获并验证绑定，保存 prefab 后打包。
+
 ## Build
 
 Local reference DLLs are stored under `lib/KK` and `lib/KKS` and are ignored by
@@ -31,6 +36,27 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build\Verify-Assemblies.ps
 
 The optional verification command checks every output assembly name and
 version. Outputs are isolated by project under `artifacts/bin/`.
+
+## Release Packages
+
+Every public release is packaged as a complete runtime bundle, even when only
+one plugin changed. The KK and KKS archives each contain the platform build of:
+
+- MakerBlendShapeSync
+- AccessoryBoneBinder
+- DBDECoordinateLoadBridge
+- FaceWeightBinder
+
+Build, verify, and package both platforms with:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\build\Package-AllPlugins.ps1
+```
+
+Use `-PackageId <name>` to override the default short Git commit used in archive
+names, and `-ReleaseNotesPath <file>` to include release notes. Unity authoring
+assemblies are distributed separately because they are not game runtime
+plugins.
 
 See [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) for the repository
 layout and platform rules.

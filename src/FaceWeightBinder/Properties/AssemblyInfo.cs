@@ -11,6 +11,6 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyProduct("FaceWeightBinder")]
 [assembly: ComVisible(false)]
 [assembly: Guid("d78505a5-cb2c-4917-b537-c16b10c1a3fb")]
-[assembly: AssemblyVersion("0.1.7.0")]
-[assembly: AssemblyFileVersion("0.1.7.0")]
+[assembly: AssemblyVersion("0.2.0.0")]
+[assembly: AssemblyFileVersion("0.2.0.0")]
 

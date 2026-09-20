@@ -5,16 +5,16 @@ param(
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $expected = @(
-    @{ Project = "MakerBlendShapeSync.KK"; File = "KK_MakerBlendShapeSync.dll"; Assembly = "KK_MakerBlendShapeSync"; Version = "0.5.1.0" },
-    @{ Project = "MakerBlendShapeSync.KKS"; File = "KKS_MakerBlendShapeSync.dll"; Assembly = "KKS_MakerBlendShapeSync"; Version = "0.5.1.0" },
+    @{ Project = "MakerBlendShapeSync.KK"; File = "KK_MakerBlendShapeSync.dll"; Assembly = "KK_MakerBlendShapeSync"; Version = "0.5.4.0" },
+    @{ Project = "MakerBlendShapeSync.KKS"; File = "KKS_MakerBlendShapeSync.dll"; Assembly = "KKS_MakerBlendShapeSync"; Version = "0.5.4.0" },
     @{ Project = "AccessoryBoneBinder.KK"; File = "KK_AccessoryBoneBinder.dll"; Assembly = "KK_AccessoryBoneBinder"; Version = "0.2.2.0" },
     @{ Project = "AccessoryBoneBinder.KKS"; File = "KKS_AccessoryBoneBinder.dll"; Assembly = "KKS_AccessoryBoneBinder"; Version = "0.2.2.0" },
     @{ Project = "DBDECoordinateLoadBridge.KK"; File = "KK_DBDECoordinateLoadBridge.dll"; Assembly = "KK_DBDECoordinateLoadBridge"; Version = "0.2.0.0" },
     @{ Project = "DBDECoordinateLoadBridge.KKS"; File = "KKS_DBDECoordinateLoadBridge.dll"; Assembly = "KKS_DBDECoordinateLoadBridge"; Version = "0.2.0.0" },
     @{ Project = "FaceWeightBinder.Authoring.KK"; File = "FaceWeightBinder.dll"; Assembly = "FaceWeightBinder"; Version = "0.1.0.0" },
     @{ Project = "FaceWeightBinder.Authoring.KKS"; File = "FaceWeightBinder.dll"; Assembly = "FaceWeightBinder"; Version = "0.1.0.0" },
-    @{ Project = "FaceWeightBinder.KK"; File = "FaceWeightBinder.dll"; Assembly = "FaceWeightBinder"; Version = "0.1.7.0" },
-    @{ Project = "FaceWeightBinder.KKS"; File = "FaceWeightBinder.dll"; Assembly = "FaceWeightBinder"; Version = "0.1.7.0" }
+    @{ Project = "FaceWeightBinder.KK"; File = "FaceWeightBinder.dll"; Assembly = "FaceWeightBinder"; Version = "0.2.0.0" },
+    @{ Project = "FaceWeightBinder.KKS"; File = "FaceWeightBinder.dll"; Assembly = "FaceWeightBinder"; Version = "0.2.0.0" }
 )
 
 $failed = $false

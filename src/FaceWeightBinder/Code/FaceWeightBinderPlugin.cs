@@ -1,5 +1,7 @@
 using BepInEx;
 using BepInEx.Logging;
+using BepInEx.Configuration;
+using UnityEngine;
 using HarmonyLib;
 using KKAPI;
 using KKAPI.Chara;
@@ -39,14 +41,26 @@ namespace FaceWeightBinder
         [System.Obsolete("Use PluginGuid.")]
         public const string GUID = PluginGuid;
 
-        public const string Version = "0.1.7.0";
+        public const string Version = "0.2.0.0";
 
         internal static ManualLogSource Log;
         private Harmony _harmony;
+        private ConfigEntry<KeyboardShortcut> _snapshotShortcut;
+        private static ConfigEntry<bool> _diagnosticLogging;
+        private static ConfigEntry<bool> _snapshotEnabled;
+        internal static bool DiagnosticLoggingEnabled => _diagnosticLogging != null && _diagnosticLogging.Value;
+        internal static bool SnapshotEnabled => _snapshotEnabled != null && _snapshotEnabled.Value;
 
         private void Awake()
         {
             Log = Logger;
+            _diagnosticLogging = Config.Bind("Diagnostics", "Verbose logging", false,
+                "Enable detailed binding scans and coordinate reports. Normal binding failures remain logged when disabled.");
+            _snapshotEnabled = Config.Bind("Diagnostics", "Enable snapshots", false,
+                "Allow diagnostic mesh snapshots via shortcut or API. Disabled by default; exporting may briefly pause the game.");
+            _snapshotShortcut = Config.Bind("Diagnostics", "Snapshot shortcut",
+                new KeyboardShortcut(KeyCode.F8, KeyCode.LeftControl, KeyCode.LeftShift),
+                "Export the Maker character's face binding meshes at end of frame. Output: BepInEx/FaceWeightSnapshots.");
             CharacterApi.RegisterExtraBehaviour<FaceWeightBinderController>(null);
 
             _harmony = new Harmony(PluginGuid);
@@ -64,7 +78,7 @@ namespace FaceWeightBinder
 #endif
                 },
                 RebindBeforeCoordinateExtraction,
-                Log);
+                DiagnosticLoggingEnabled ? Log : null);
 
             AccessoriesApi.AccessoryKindChanged += AccessoriesApi_AccessoryKindChanged;
             AccessoriesApi.AccessoryTransferred += AccessoriesApi_AccessoryTransferred;
@@ -77,6 +91,17 @@ namespace FaceWeightBinder
             AccessoriesApi.AccessoryTransferred -= AccessoriesApi_AccessoryTransferred;
             AccessoriesApi.AccessoriesCopied -= AccessoriesApi_AccessoriesCopied;
             _harmony?.UnpatchSelf();
+        }
+
+        private void Update()
+        {
+            if (!SnapshotEnabled || !_snapshotShortcut.Value.IsDown())
+                return;
+            var controller = GetMakerController();
+            if (controller == null)
+                Log.LogWarning("[FaceWeightSnapshot] Open Maker and equip a FaceWeightProcess asset first.");
+            else
+                controller.RequestDiagnosticSnapshot();
         }
 
         private static void RebindBeforeCoordinateExtraction(ChaControl chaControl)

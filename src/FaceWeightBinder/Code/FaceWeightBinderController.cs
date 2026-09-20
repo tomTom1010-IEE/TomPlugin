@@ -29,6 +29,8 @@ namespace FaceWeightBinder
             public SkinnedMeshRenderer ReferenceRenderer;
             public Mesh ReferenceMesh;
             public Transform SourceMeshSpaceReference;
+            public Transform AssetRoot;
+            public Matrix4x4 SourceToReference;
             public bool UsesReferenceBindposes;
             public bool DiagnosticsLogged;
         }
@@ -40,9 +42,66 @@ namespace FaceWeightBinder
         private Coroutine _scheduledRebind;
         private float _nextTopologyPoll;
         private int _topologyFingerprint = int.MinValue;
+        private string _lastScanSummary;
+        private bool _snapshotPending;
+
+        public bool RequestDiagnosticSnapshot()
+        {
+            if (!FaceWeightBinderPlugin.SnapshotEnabled || _snapshotPending || !isActiveAndEnabled)
+                return false;
+            _snapshotPending = true;
+            StartCoroutine(CaptureSnapshotAtEndOfFrame());
+            return true;
+        }
+
+        private IEnumerator CaptureSnapshotAtEndOfFrame()
+        {
+            yield return new WaitForEndOfFrame();
+            try
+            {
+                if (!FaceWeightBinderPlugin.SnapshotEnabled)
+                    yield break;
+                if (_scheduledRebind != null || HasSourceSpaceChanged())
+                {
+                    FaceWeightBinderPlugin.Log?.LogWarning("[FaceWeightSnapshot] Binding is still pending; wait and press the shortcut again.");
+                    yield break;
+                }
+                var entries = new List<FaceWeightSnapshot.Entry>();
+                foreach (var state in _rendererBindingStates.Values)
+                    if (state.Renderer != null && state.ReferenceRenderer != null &&
+                        state.UsesReferenceBindposes && state.Renderer.sharedMesh == state.CorrectedMesh &&
+                        HaveSameBones(state.Renderer.bones, state.TargetBones))
+                        entries.Add(new FaceWeightSnapshot.Entry
+                        {
+                            Renderer = state.Renderer, SourceMesh = state.SourceMesh,
+                            Reference = state.ReferenceRenderer, SourceToReference = state.SourceToReference
+                        });
+                if (entries.Count == 0)
+                {
+                    FaceWeightBinderPlugin.Log?.LogWarning("[FaceWeightSnapshot] No successfully bound face renderer with a character-face reference. Nothing exported.");
+                    yield break;
+                }
+                try
+                {
+                    string path = FaceWeightSnapshot.Export(ChaControl.transform,
+                        ChaControl.objHead == null ? null : ChaControl.objHead.transform, entries,
+                        ChaControl.chaFile.custom.face.shapeValueFace);
+                    FaceWeightBinderPlugin.Log?.LogInfo("[FaceWeightSnapshot] Saved: " + path);
+                }
+                catch (Exception ex)
+                {
+                    FaceWeightBinderPlugin.Log?.LogError("[FaceWeightSnapshot] Export failed; any incomplete folder is not a valid snapshot. " + ex);
+                }
+            }
+            finally { _snapshotPending = false; }
+        }
 
         protected override void OnReload(GameMode currentGameMode, bool maintainState)
         {
+            if (FaceWeightBinderPlugin.DiagnosticLoggingEnabled)
+                FaceWeightBinderPlugin.Log?.LogInfo("[BindingScan] Controller reload on " +
+                (ChaControl == null ? "(null)" : ChaControl.name));
+            _lastScanSummary = null;
             if (!maintainState)
             {
                 _loggedFailures.Clear();
@@ -81,11 +140,29 @@ namespace FaceWeightBinder
             PruneRuntimeMeshes();
             int fingerprint = TomTom.KKMod.Shared.TopologyFingerprint.Build(
                 EnumerateAssetRoots());
-            if (fingerprint == _topologyFingerprint)
+            if (fingerprint == _topologyFingerprint && !HasSourceSpaceChanged())
                 return;
 
             _topologyFingerprint = fingerprint;
             ScheduleRebind();
+        }
+
+        private bool HasSourceSpaceChanged()
+        {
+            foreach (var state in _rendererBindingStates.Values)
+            {
+                if (!state.UsesReferenceBindposes || state.Renderer == null)
+                    continue;
+                if (state.AssetRoot == null || state.SourceMeshSpaceReference == null ||
+                    !state.Renderer.transform.IsChildOf(state.AssetRoot) ||
+                    !state.SourceMeshSpaceReference.IsChildOf(state.AssetRoot))
+                    return true;
+                var current = FaceWeightBindingSpace.SourceToReference(state.AssetRoot,
+                    state.Renderer.transform, state.SourceMeshSpaceReference);
+                if (!FaceWeightBindingSpace.Approximately(state.SourceToReference, current))
+                    return true;
+            }
+            return false;
         }
 
         internal void ScheduleRebind()
@@ -120,6 +197,9 @@ namespace FaceWeightBinder
                 var report = BindMarkedRenderers();
                 if (report.MarkerCount == 0 || report.FailedRendererCount == 0)
                     break;
+                if (attempt == RetryCount - 1)
+                    FaceWeightBinderPlugin.Log?.LogWarning("[BindingScan] Retry limit reached: markers=" +
+                        report.MarkerCount + ", failed=" + report.FailedRendererCount);
                 yield return new WaitForSecondsRealtime(RetryInterval);
             }
 
@@ -134,6 +214,7 @@ namespace FaceWeightBinder
 
             var markers = FindMarkers();
             report.MarkerCount = markers.Count;
+            LogScanSummary(markers.Count);
             if (markers.Count == 0)
                 return report;
 
@@ -141,6 +222,10 @@ namespace FaceWeightBinder
             if (headBones == null || headBones.Count == 0)
             {
                 report.FailedRendererCount = markers.Count;
+                if (_loggedFailures.Add("head-dictionary-unavailable"))
+                    FaceWeightBinderPlugin.Log?.LogWarning(
+                        "[BindingScan] Markers found, but aaWeightsHead.dictBone is unavailable/empty. Field resolved=" +
+                        (HeadWeightsField != null));
                 return report;
             }
 
@@ -149,7 +234,8 @@ namespace FaceWeightBinder
 
             if (report.Changed)
             {
-                FaceWeightBinderPlugin.Log?.LogInfo(
+                if (FaceWeightBinderPlugin.DiagnosticLoggingEnabled)
+                    FaceWeightBinderPlugin.Log?.LogInfo(
                     "Bound " + report.BoundRendererCount + " face-weighted renderer(s) on " +
                     ChaControl.name + ".");
                 BlendShapeSyncBridge.ScheduleApplyIfAvailable(ChaControl);
@@ -157,6 +243,34 @@ namespace FaceWeightBinder
             }
 
             return report;
+        }
+
+        private void LogScanSummary(int markerCount)
+        {
+            if (!FaceWeightBinderPlugin.DiagnosticLoggingEnabled)
+                return;
+            var lines = new List<string>();
+            foreach (var root in EnumerateAssetRoots())
+            {
+                var behaviours = root.GetComponentsInChildren<MonoBehaviour>(true);
+                int missing = behaviours.Count(x => x == null);
+                var markerTypes = behaviours.Where(x => x != null &&
+                    x.GetType().Name == "FaceWeightProcess")
+                    .Select(x => x.GetType().AssemblyQualifiedName).ToArray();
+                var info = root.GetComponent<ListInfoComponent>();
+                string asset = info == null || info.data == null ? "(no list info)" :
+                    info.data.GetInfo(ChaListDefine.KeyType.MainAB) + " / " +
+                    info.data.GetInfo(ChaListDefine.KeyType.MainData);
+                lines.Add(root.name + "#" + root.GetInstanceID() + " asset=" + asset +
+                    " renderers=" + root.GetComponentsInChildren<SkinnedMeshRenderer>(true).Length +
+                    " missingScripts=" + missing + " markerTypes=" + string.Join(";", markerTypes));
+            }
+            string summary = "[BindingScan] " + ChaControl.name + " markers=" + markerCount +
+                "\n" + string.Join("\n", lines.ToArray());
+            if (_lastScanSummary == summary)
+                return;
+            _lastScanSummary = summary;
+            FaceWeightBinderPlugin.Log?.LogInfo(summary);
         }
 
         private List<FaceWeightProcess> FindMarkers()
@@ -255,7 +369,7 @@ namespace FaceWeightBinder
                 var rootBone = rootBoneObject.transform;
                 var referenceRenderer = FindCharacterHeadRenderer(
                     rootBoneName, boneNames, renderer);
-                if (referenceRenderer == null &&
+                if (FaceWeightBinderPlugin.DiagnosticLoggingEnabled && referenceRenderer == null &&
                     _loggedReferenceSearch.Add(renderer.GetInstanceID()))
                 {
                     FaceWeightBinderPlugin.Log?.LogInfo(
@@ -427,15 +541,28 @@ namespace FaceWeightBinder
                 : referenceRenderer.sharedMesh;
             var sourceMeshSpaceReference = FindSourceMeshSpaceReference(
                 marker, renderer, referenceRenderer);
+            if (sourceMeshSpaceReference != null &&
+                !renderer.transform.IsChildOf(marker.transform))
+            {
+                failureReason = "renderer is outside its FaceWeightProcess asset root";
+                return false;
+            }
+            Matrix4x4 sourceToReference = sourceMeshSpaceReference == null
+                ? Matrix4x4.identity
+                : FaceWeightBindingSpace.SourceToReference(marker.transform,
+                    renderer.transform, sourceMeshSpaceReference);
             bool targetChanged = !HaveSameBones(existing.TargetBones, mappedBones) ||
                                  existing.ReferenceRenderer != referenceRenderer ||
                                  existing.ReferenceMesh != referenceMesh ||
                                  existing.SourceMeshSpaceReference !=
-                                 sourceMeshSpaceReference;
+                                 sourceMeshSpaceReference ||
+                                 existing.AssetRoot != marker.transform ||
+                                 (referenceRenderer != null &&
+                                  !FaceWeightBindingSpace.Approximately(
+                                      existing.SourceToReference, sourceToReference));
             if (targetChanged)
             {
                 Matrix4x4[] correctedBindposes;
-                Matrix4x4 sourceToReference = Matrix4x4.identity;
                 bool usedReferenceBindposes = false;
                 try
                 {
@@ -446,9 +573,9 @@ namespace FaceWeightBinder
                             failureReason = "source face mesh-space reference is unavailable";
                             return false;
                         }
-                        if (!TryBuildReferenceBindposes(renderer, boneNames,
-                                referenceRenderer, sourceMeshSpaceReference,
-                                out correctedBindposes, out sourceToReference,
+                        if (!TryBuildReferenceBindposes(boneNames,
+                                referenceRenderer, sourceToReference,
+                                out correctedBindposes,
                                 out failureReason))
                             return false;
                         usedReferenceBindposes = true;
@@ -472,14 +599,16 @@ namespace FaceWeightBinder
                 existing.ReferenceRenderer = referenceRenderer;
                 existing.ReferenceMesh = referenceMesh;
                 existing.SourceMeshSpaceReference = sourceMeshSpaceReference;
-                if (usedReferenceBindposes && !existing.UsesReferenceBindposes)
+                existing.AssetRoot = marker.transform;
+                existing.SourceToReference = sourceToReference;
+                if (FaceWeightBinderPlugin.DiagnosticLoggingEnabled && usedReferenceBindposes && !existing.UsesReferenceBindposes)
                 {
                     FaceWeightBinderPlugin.Log?.LogDebug(
                         "Using character head bindposes for renderer '" +
                         renderer.name + "'.");
                 }
                 existing.UsesReferenceBindposes = usedReferenceBindposes;
-                if (usedReferenceBindposes && !existing.DiagnosticsLogged)
+                if (FaceWeightBinderPlugin.DiagnosticLoggingEnabled && usedReferenceBindposes && !existing.DiagnosticsLogged)
                 {
                     try
                     {
@@ -533,15 +662,13 @@ namespace FaceWeightBinder
         }
 
         private static bool TryBuildReferenceBindposes(
-            SkinnedMeshRenderer renderer, string[] boneNames,
+            string[] boneNames,
             SkinnedMeshRenderer referenceRenderer,
-            Transform sourceMeshSpaceReference,
+            Matrix4x4 sourceToReference,
             out Matrix4x4[] correctedBindposes,
-            out Matrix4x4 sourceToReference,
             out string failureReason)
         {
             correctedBindposes = null;
-            sourceToReference = Matrix4x4.identity;
             failureReason = null;
             var referenceMesh = referenceRenderer.sharedMesh;
             var referenceBones = referenceRenderer.bones ?? new Transform[0];
@@ -563,9 +690,6 @@ namespace FaceWeightBinder
                 if (bone != null && !bindposesByName.ContainsKey(bone.name))
                     bindposesByName.Add(bone.name, referenceBindposes[i]);
             }
-
-            sourceToReference = sourceMeshSpaceReference.worldToLocalMatrix *
-                                renderer.transform.localToWorldMatrix;
 
             correctedBindposes = new Matrix4x4[boneNames.Length];
             for (int i = 0; i < boneNames.Length; i++)
@@ -712,9 +836,12 @@ namespace FaceWeightBinder
             var requiredNames = new HashSet<string>(
                 requiredBoneNames.Where(x => !string.IsNullOrEmpty(x)),
                 StringComparer.Ordinal);
+            var assetRoots = EnumerateAssetRoots().ToArray();
             var allCandidates = ChaControl
                 .GetComponentsInChildren<SkinnedMeshRenderer>(true)
                 .Where(x => x != null && x != sourceRenderer &&
+                            !FaceWeightBindingSpace.IsAssetRenderer(x, assetRoots) &&
+                            !_rendererBindingStates.ContainsKey(x.GetInstanceID()) &&
                             x.sharedMesh != null && x.bones != null &&
                             x.sharedMesh.bindposes.Length == x.bones.Length)
                 .ToArray();
