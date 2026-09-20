@@ -4,9 +4,8 @@ FaceWeightBinder lets KK/KKS clothing and accessory `SkinnedMeshRenderer`
 objects authored with the original face skeleton use the current character's
 real face bones. It does not own ABMX, DBDE, or BlendShape save data.
 
-FaceWeightBinder 让使用原版面部骨架权重制作的 KK/KKS 衣服或饰品绑定到当前
-人物的真实面部骨骼，并与 AccessoryBoneBinder、ABMX、DBDE、
-MakerBlendShapeSync 和 KKPE/KKSPE 保持职责分离。
+It works alongside AccessoryBoneBinder, ABMX, DBDE, MakerBlendShapeSync,
+and KKPE/KKSPE without taking over their responsibilities.
 
 ## Projects
 
@@ -30,9 +29,6 @@ The authoring and runtime DLLs intentionally share the assembly name
 to resolve to the runtime implementation in game. Their output and intermediate
 directories are isolated so one project cannot replace another project's DLL.
 
-Authoring 与 Runtime DLL 有意使用相同程序集名，以便 Unity 序列化组件在游戏中
-解析；四个项目使用独立输出和中间目录，不会互相覆盖。
-
 ## Unity setup
 
 1. Build the Authoring project matching the target game.
@@ -44,17 +40,19 @@ Authoring 与 Runtime DLL 有意使用相同程序集名，以便 Unity 序列�
 7. Capture and validate renderer bindings, then save the prefab before building
    the AssetBundle.
 
-**饰品制作必须先添加并配置 Cha Acc 组件，再添加 Face Weight Process 权重组件。**
-顺序反过来已观察到进入游戏后模型放大 **100 倍** 的问题；当前发布流程必须遵守
-上述顺序。两个组件配置完成后再执行 `Capture Renderer Bindings` 和
-`Validate Bindings`，保存 prefab 后打包。此处记录的是已观察到的制作流程限制，
-具体缩放触发机制仍需核实。
+**For accessories, add and configure Cha Acc before adding Face Weight Process.**
+Adding them in reverse order has been observed to make the model **100 times
+larger** in game. Follow this order for the current release. After configuring both
+components, run `Capture Renderer Bindings` and `Validate Bindings`, then save the
+prefab before building the AssetBundle. This documents an observed authoring
+constraint; the exact cause of the scaling issue has not yet been confirmed.
 
 The editor helper only uses APIs available in Unity 5.6, so the same source is
 used by both authoring workflows.
 
-导入网格必须与目标游戏的原版面部网格使用相同模型空间单位。FBX 比例应在
-Unity 导入时修正，运行时插件不会自动补偿 `100x`。
+Imported meshes must use the same model-space units as the target game's original
+face mesh. Correct the FBX scale during Unity import; the runtime plugin does not
+automatically compensate for a `100x` unit mismatch.
 
 ## Initial release (0.2.0)
 

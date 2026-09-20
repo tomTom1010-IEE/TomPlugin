@@ -6,10 +6,6 @@ A single source workspace for TomTom's Koikatu (KK) and Koikatsu Sunshine
 references, constants, assembly names, and versions. Paired KK/KKS builds use
 the same platform-neutral BepInEx plugin GUID.
 
-这是 TomTom 的 KK/KKS 插件统一源码工作区。每个插件只维护一份主要源码，
-通过独立的 `.KK.csproj` 与 `.KKS.csproj` 区分目标框架、游戏依赖、编译常量、
-DLL 名称和版本；同一插件的 KK/KKS 版本共用平台无关的 BepInEx GUID。
-
 ## Projects
 
 | Plugin | KK | KKS | Unity authoring |
@@ -19,10 +15,12 @@ DLL 名称和版本；同一插件的 KK/KKS 版本共用平台无关的 BepInEx
 | DBDECoordinateLoadBridge | Yes | Yes | No |
 | FaceWeightBinder | Yes | Yes | KK 5.6.2f1 / KKS 2019 |
 
-FaceWeightBinder 初版 `0.2.0.0` 默认关闭诊断日志和状态快照，详见
-[发布说明](src/FaceWeightBinder/RELEASE_NOTES.md)。制作面部权重饰品时，
-**必须先添加 Cha Acc 组件，再添加 Face Weight Process 权重组件**；反序已观察到
-模型放大 100 倍的问题。配置完成后再捕获并验证绑定，保存 prefab 后打包。
+FaceWeightBinder initial release `0.2.0.0` disables diagnostic logging and
+snapshots by default. See the [release notes](src/FaceWeightBinder/RELEASE_NOTES.md).
+When authoring face-weighted accessories, **add and configure Cha Acc before
+adding Face Weight Process**. Adding them in reverse order has been observed to
+make the model 100 times larger in game. After configuration, capture and validate
+the bindings, then save the prefab before building the AssetBundle.
 
 ## Build
 

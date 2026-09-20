@@ -1,53 +1,89 @@
-# FaceWeightBinder 0.2.0.0 — 初版发布
+# FaceWeightBinder 0.2.0.0 — Initial Release
 
-为带有 FaceWeightProcess 标记、原版面部骨骼权重的衣物和饰品绑定当前角色的面部骨骼。
+Binds clothing and accessories marked with FaceWeightProcess and weighted to the
+original face skeleton to the current character's face bones.
 
-## 本版收口
+## Release changes
 
-- 默认关闭详细绑定扫描、参考搜索和坐标诊断日志；关闭时不生成这些报告。
-- 默认关闭状态快照，快捷键和 API 请求均受开关控制。升级旧版本后，仅保留的快捷键设置不会自动启用快照。
-- 保留绑定失败、兼容调用失败等必要警告和错误。
-- 保留原脸候选排除与资产内部相对空间缓存修正。
-- Unity authoring DLL 保持 0.1.0.0；本版运行时收口无需重新打包已有有效资产。
+- Detailed binding scans, reference-search reports, and coordinate diagnostics
+  are disabled by default. These reports are not generated while disabled.
+- Snapshot export is disabled by default. Both keyboard and API requests require
+  the snapshot setting to be enabled. An existing shortcut setting alone does not
+  enable snapshots when upgrading.
+- Necessary warnings and errors, including binding and compatibility-call
+  failures, remain enabled.
+- Retains the character-face candidate exclusions and binding cache checks for
+  relative transforms inside the asset.
+- The Unity authoring DLL remains at 0.1.0.0. This runtime release does not require
+  rebuilding existing valid assets.
 
-## 安装
+## Installation
 
-选择对应游戏的压缩包，将 BepInEx 文件夹合并到游戏目录。更新时替换原运行时 FaceWeightBinder.dll，避免重复安装。
+Choose the archive for your game and merge its BepInEx folder into the game
+directory. When updating, replace the existing runtime FaceWeightBinder.dll
+and avoid duplicate installations.
 
-KK 和 KKS 的运行时文件都叫 FaceWeightBinder.dll，但不能混用或同时安装。不要把 Unity authoring DLL 放入游戏。
+Both KK and KKS runtime files are named FaceWeightBinder.dll, but they are not
+interchangeable and must not be installed together. Do not install the Unity
+authoring DLL into the game.
 
-配置文件：BepInEx/config/tomtom.faceweightbinder.cfg。
-Diagnostics 下的 Verbose logging 和 Enable snapshots 默认均为 false。
-只有显式启用 Enable snapshots，Left Ctrl + Left Shift + F8 才导出诊断数据。
+Configuration file: `BepInEx/config/tomtom.faceweightbinder.cfg`.
+Under `Diagnostics`, `Verbose logging` and `Enable snapshots` both default to
+`false`. **Left Ctrl + Left Shift + F8** exports diagnostic data only after
+`Enable snapshots` has been explicitly enabled.
 
-## Unity 饰品制作顺序（必须遵守）
+## Required Unity accessory authoring order
 
-**必须先添加并配置 Cha Acc 组件，再添加 Face Weight Process 权重组件。**
-反过来添加已观察到游戏中模型放大 **100 倍** 的问题。
-完成两个组件配置后，再点击 Capture Renderer Bindings、Validate Bindings，
-保存 prefab 后打包。此项是当前已观察到的制作流程限制，缩放触发机制仍在核查。
+**Add and configure the Cha Acc component first, then add Face Weight Process.**
+Adding them in reverse order has been observed to make the model **100 times
+larger** in game. After configuring both components, click
+`Capture Renderer Bindings` and `Validate Bindings`, then save the prefab before
+building the AssetBundle. This is an observed authoring constraint for the current
+release; the exact cause of the scaling issue is still under investigation.
 
-## 依赖核查
+## Dependency audit
 
-| 编译参考 | KK | KKS |
+| Build reference | KK | KKS |
 | --- | --- | --- |
 | BepInEx | 5.4.23.5 | 5.4.23.4 |
 | 0Harmony | 2.9.0.0 | 2.9.0.0 |
-| 游戏 API | KKAPI 1.46.1.0 | KKSAPI 1.42.2.0 |
-| .NET 目标 | 3.5 | 4.6.2 |
+| Game API | KKAPI 1.46.1.0 | KKSAPI 1.42.2.0 |
+| .NET target | 3.5 | 4.6.2 |
 
-以上是 DLL 元数据中的编译参考版本，不是配置中的精确版本限制。插件以 marco.kkapi GUID 声明必须安装 API，未设置版本条件。BepInEx、Harmony 和游戏 API 引用均无强名称公钥标记；代码没有精确版本判断，也没有从作者本机绝对路径加载 DLL。实际兼容仍取决于运行环境是否提供所需类型、方法和事件，尚未验证所有历史版本或确定最低 API 版本。
+These are the build reference versions recorded in the DLL metadata, not
+exact-version requirements in the plugin configuration. The required API is
+declared through the `marco.kkapi` GUID without a version constraint. The BepInEx,
+Harmony, and game API references have no strong-name public key token. The code
+does not enforce exact versions or load DLLs from absolute paths on the author's
+machine. Compatibility still depends on the environment providing the required
+types, methods, and events. Not all historical versions have been tested, and a
+minimum supported API version has not been established.
 
-AccessoryBoneBinder、MakerBlendShapeSync、ModBoneImplantor、Coordinate Load Option 均为可选依赖。前两者及 Coordinate Load Option 通过已加载插件探测接口，不要求额外复制这些 DLL；ABMX、DBDE 无直接程序集引用。共享代码编入插件，无需另装 TomTom.KKMod.Shared.dll。
+AccessoryBoneBinder, MakerBlendShapeSync, ModBoneImplantor, and Coordinate Load
+Option are optional dependencies. The first two and Coordinate Load Option are
+integrated by probing the APIs of loaded plugins; no additional copies of their
+DLLs are required. ABMX and DBDE are not direct assembly references. Shared code
+is compiled into the plugin, so no separate TomTom.KKMod.Shared.dll is needed.
 
-KKS 构建默认参考仓库内 1.42.2 文件，可通过 KKSApiReferencePath 改用其他兼容参考；KK 对应 KKApiReferencePath。这些只是构建参数。SpecificVersion=false 不等于任意版本都能运行。
+KKS builds use the repository's 1.42.2 API reference by default. Override
+`KKSApiReferencePath` to compile against another compatible reference; the KK
+equivalent is `KKApiReferencePath`. These are build parameters only.
+`SpecificVersion=false` does not guarantee compatibility with every version.
 
-## 验证与边界
+## Validation and limitations
 
-- KK/KKS Release 编译通过，零警告、零错误。
-- 两份成品通过版本、诊断关闭默认值、快照入口开关、依赖声明和本机路径字符串检查。
-- Unity 5.6 原脸候选/相对空间矩阵回归：12 项通过。
-- 资产权重及模型调整由用户在本轮收口前验收；本次发布 DLL 尚未重新进行两款游戏内完整验收。
-- 自定义面罩需要正确权重；插件不会自动制作/同步缺失的表情形态键，也不保证任意模型或极端捏脸都不穿模。
+- KK and KKS Release builds passed with zero warnings and zero errors.
+- Both binaries passed checks for assembly identity, disabled diagnostic
+  defaults, snapshot entry guards, dependency declarations, and machine-specific
+  runtime path strings.
+- All 12 Unity 5.6 regression checks for reference selection and relative-space
+  matrices passed.
+- The adjusted model and asset weights were accepted in user testing before
+  release preparation. The final release DLLs have not undergone a new full
+  in-game validation in both games.
+- Custom masks require correct weights. The plugin does not automatically create
+  or synchronize missing expression BlendShapes, and does not guarantee that all
+  models or extreme face settings will be free of clipping.
 
-发布包不包含游戏、Unity、BepInEx、Harmony 或 API DLL，沿用对应游戏环境中的依赖。
+Packages do not include game, Unity, BepInEx, Harmony, or API DLLs. Use the
+compatible dependencies already installed in the corresponding game environment.
